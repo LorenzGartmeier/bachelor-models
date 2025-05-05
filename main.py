@@ -32,7 +32,7 @@ print(batch.shape)
 print(batch[0].shape)
 
 fig, ax = plt.subplots(ncols=5, figsize=(20, 20))
-for idx, img in enumerate(batch[:5]):
+for idx, img in enumerate(batch[:1]):
     img_display = np.squeeze(img)
     ax[idx].imshow(img_display, cmap='gray') 
     ax[idx].axis('off') 
@@ -40,15 +40,20 @@ for idx, img in enumerate(batch[:5]):
 plt.show()  
 
 
-
 class KernelConstraint(keras.constraints.Constraint):
-
     def __call__(self, w):
-        
+            
         print("the shape of the kernel is ")
-        print(tf.shape(w))
-        w[int(kernel_height/2)][int(kernel_width/2)] = 0
-        return w
+        print(w.shape)
+
+        w_shape = w.shape
+        middle_zero_tensor = np.ones(w_shape)
+
+        middle_zero_tensor[w_shape[0] // 2, w_shape[1] // 2, :, :] = 0
+
+        
+        return w * middle_zero_tensor
+
 
 
 class SceneContentApproximator(Model):
@@ -62,51 +67,61 @@ class SceneContentApproximator(Model):
         return self.conv(input)
     
     
+    
+    def train(self, image_batch, epochs):
 
+        def custom_loss(y_true, y_pred):
+            # y_true: (resize_height, resize_width, 1)
+            # y_pred: (resize_height - kernel_height + 1, resize_width - kernel_width + 1, 1)
 
-def trainSceneContentApproximator(image, epochs = 10):
-    sceneContentApproximator = SceneContentApproximator()
-
-
-    def custom_loss(y_true, y_pred):
-        # y_true: (resize_height, resize_width, 1)
-        # y_pred: (resize_height - kernel_height + 1, resize_width - kernel_width + 1, 1)
-
-        # cut off edges
-        batch_size = len(y_true)
-        y_true = y_true[:batch_size,int(kernel_height/2):-int(kernel_height/2),int(kernel_height/2):-int(kernel_height/2)]
-        return math.reduce_sum(math.square(y_true - y_pred))
-
-
-    optimizer = keras.optimizers.AdamW(learning_rate)
-
-    @tf.function
-    def train_step(image):
-        with tf.GradientTape() as tape:
-            prediction = sceneContentApproximator(image, training=True)
-            loss = custom_loss(image, prediction)
+            # cut off edges
+            batch_size = len(y_true)
+            y_true = y_true[:batch_size,kernel_height//2:-kernel_height//2,kernel_height//2:kernel_height/2]
+            return math.reduce_sum(math.square(y_true - y_pred))
         
-        # Get gradients and update weights
-        gradients = tape.gradient(loss, sceneContentApproximator.trainable_variables)
-        optimizer.apply_gradients(zip(gradients, sceneContentApproximator.trainable_variables))
-    
-    for epoch in range (epochs):
-        print(epoch)
-        train_step(image)
-    
-    return sceneContentApproximator
 
-image = dataset
-sceneContentApproximator = trainSceneContentApproximator(image,2)
+        optimizer = keras.optimizers.AdamW(learning_rate)
+
+        @tf.function
+        def train_step(image_batch):
+            with tf.GradientTape() as tape:
+                prediction = self(image_batch, training=True)
+                loss = custom_loss(image_batch, prediction)
+            
+            # Get gradients and update weights
+            gradients = tape.gradient(loss, self.trainable_variables)
+            optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+        
+        for epoch in range (epochs):
+            train_step(image_batch)
+
+
+
+    def train_and_get(self, image_batch, epochs):
+        self.train(image_batch, epochs)
+        return self.call(image_batch)
+        
+
+
 
 batch = iterator.next()
-sample_image = batch[0]
-sample_residual = sceneContentApproximator(batch)[0]
+image = batch[0]
+
+print('Shape of the batch:')
+print(batch.shape)
+
+sceneContentApproximator = SceneContentApproximator()
+
+prediction_batch = sceneContentApproximator.train_and_get(batch, 10000)
+
+approximated_image = prediction_batch[0]
+
+
 
 fig, ax = plt.subplots(ncols=2, figsize=(20, 20))
-ax[0].imshow(np.squeeze(sample_image), cmap = 'gray')
+ax[0].imshow(np.squeeze(image), cmap = 'gray')
 ax[0].axis('off')
-ax[1].imshow(np.squeeze(sample_residual), cmap = 'gray')
+ax[1].imshow(np.squeeze(approximated_image), cmap = 'gray')
 ax[1].axis('off')
 
 plt.show()  
