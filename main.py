@@ -22,7 +22,7 @@ def getDatasetFromDirectory(path, batch_size) -> tf.data.Dataset:
         batch_size=batch_size
     )
 
-dataset = getDatasetFromDirectory(os.path.join('datasets', 'coco2017'), 32)
+dataset = getDatasetFromDirectory(os.path.join('datasets', 'coco2017'), 1)
 
 dataset = dataset.take(512)
 
@@ -64,8 +64,8 @@ class SceneContentApproximator(Model):
     
 
 
-def trainResidualCreator(dataset, epochs = 10):
-    residualCreator = SceneContentApproximator()
+def trainSceneContentApproximator(image, epochs = 10):
+    sceneContentApproximator = SceneContentApproximator()
 
 
     def custom_loss(y_true, y_pred):
@@ -81,27 +81,27 @@ def trainResidualCreator(dataset, epochs = 10):
     optimizer = keras.optimizers.AdamW(learning_rate)
 
     @tf.function
-    def train_step(images):
+    def train_step(image):
         with tf.GradientTape() as tape:
-            predictions = residualCreator(images, training=True)
-            loss = custom_loss(images, predictions)
+            prediction = sceneContentApproximator(image, training=True)
+            loss = custom_loss(image, prediction)
         
         # Get gradients and update weights
-        gradients = tape.gradient(loss, residualCreator.trainable_variables)
-        optimizer.apply_gradients(zip(gradients, residualCreator.trainable_variables))
+        gradients = tape.gradient(loss, sceneContentApproximator.trainable_variables)
+        optimizer.apply_gradients(zip(gradients, sceneContentApproximator.trainable_variables))
     
     for epoch in range (epochs):
         print(epoch)
-        for images in dataset:
-            train_step(images)
+        train_step(image)
     
-    return residualCreator
+    return sceneContentApproximator
 
-residualCreator = trainResidualCreator(dataset,2)
+image = dataset
+sceneContentApproximator = trainSceneContentApproximator(image,2)
 
 batch = iterator.next()
 sample_image = batch[0]
-sample_residual = residualCreator(batch)[0]
+sample_residual = sceneContentApproximator(batch)[0]
 
 fig, ax = plt.subplots(ncols=2, figsize=(20, 20))
 ax[0].imshow(np.squeeze(sample_image), cmap = 'gray')
@@ -111,7 +111,7 @@ ax[1].axis('off')
 
 plt.show()  
 
-print(residualCreator.get_weights())
+print(sceneContentApproximator.get_weights())
 
 
 
