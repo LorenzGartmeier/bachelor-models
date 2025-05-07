@@ -12,6 +12,7 @@ resize_height, resize_width = 256, 256
 
 # should be odd numbers
 kernel_height, kernel_width = 11, 11
+# in the paper detoned as K
 num_kernels = 4
 
 learning_rate = 0.001
