@@ -14,33 +14,39 @@ class SceneContentApproximator(Model):
 
 
         self.learning_rate = learning_rate
-        self.conv = layers.Conv2D(num_kernels, (kernel_height,kernel_width), use_bias= False, kernel_regularizer = KernelDiversityLoss(loss_constant_alpha, loss_constant_lambda), kernel_constraint = KernelConstraint(), padding='same')
-
-    
+        self.conv = layers.Conv2D(
+                                    num_kernels, 
+                                    (kernel_height,kernel_width),
+                                    use_bias= False, 
+                                    kernel_regularizer = KernelDiversityLoss(loss_constant_alpha, loss_constant_lambda, num_kernels, kernel_height, kernel_width),
+                                    kernel_constraint = KernelConstraint(), 
+                                    padding='same' # to let the ouput of the layer have the same size as the input
+                                    )
+        
     def call(self, input):
         return self.conv(input)
     
-    
-    
+    # expects grayscaled images (num_colorchannels = 1)
     def train(self, image_batch, epochs):
 
         def custom_loss(y_true, y_pred):
-            # y_true.shape (1, resize_height, resize_width, 1)
-            # y_true.shape (1, resize_height, resize_width, num_kernels)
+            # y_true.shape (batch_size, resize_height, resize_width, num_colorchannels)
+            # y_true.shape (batch_size, resize_height, resize_width, num_kernels)
 
-            # y_true gets broadcasted
+            # y_true gets broadcasted (num_colorchannels = 1 required)
             discrepancy_loss =  math.reduce_sum(math.square(y_true - y_pred))
             return discrepancy_loss
                                                 
-
-
-
         optimizer = keras.optimizers.AdamW(self.learning_rate)
 
         @tf.function
         def train_step(image_batch):
             with tf.GradientTape() as tape:
+
+                # shape: ()
                 prediction = self(image_batch, training=True)
+
+                # single value
                 loss = custom_loss(image_batch, prediction)
             
             # Get gradients and update weights
@@ -51,7 +57,9 @@ class SceneContentApproximator(Model):
             train_step(image_batch)
 
 
-
+    # expects batches of shape (batch_size, image_height, image_width, num_colorchannels)
+    # with num_colorchannels = 1 for grayscaled images
+    # output: prediction batch with shape (batch_size, image_height, image_width, num_kernels)
     def train_and_get(self, image_batch, epochs):
         self.train(image_batch, epochs)
         return self.call(image_batch)
@@ -95,6 +103,7 @@ class KernelDiversityLoss(keras.regularizers.Regularizer):
             # shape: (1, kernel_height, kernel_width, num_kernels)
 
             # shape (kernel_height * kernel_width, num_kernels)
+            # the paper uses (num_kernels, kernel_height * kernel_width), the difference is to be examined
             flattened_kernels = tf.squeeze(tf.reshape(kernel_tensor, [1, self.kernel_height * self.kernel_width, self.num_kernels])) 
 
 
