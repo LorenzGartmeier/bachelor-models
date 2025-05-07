@@ -5,9 +5,8 @@ import os
 import keras
 import numpy as np
 from keras import Model, layers
-
-from model import SceneContentApproximator
-
+from dataloading.loadResized import getDatasetFromDirectory
+from model.SceneContentApproximator import SceneContentApproximator
 
 resize_height, resize_width = 256, 256
 
@@ -15,9 +14,7 @@ resize_height, resize_width = 256, 256
 kernel_height, kernel_width = 11, 11
 num_kernels = 4
 
-
 learning_rate = 0.001
-
 
 # please refer to the paper
 loss_constant_alpha = 0.01
@@ -26,21 +23,14 @@ loss_constant_alpha = 0.01
 loss_constant_lambda = 1.0
 
 
-def getDatasetFromDirectory(path, batch_size) -> tf.data.Dataset:
-    return keras.utils.image_dataset_from_directory(
-        directory=path,
-        labels= None,
-        color_mode="grayscale",
-        image_size=(resize_height, resize_width),
-        batch_size=batch_size
-    )
+
 
 dataset = getDatasetFromDirectory(os.path.join('datasets', 'coco2017'), 1)
 
 dataset = dataset.take(512)
 
+# batches obtained with iterator.next() have shape (batch_size, image_height, image_width, num_colorchannels)
 iterator = dataset.as_numpy_iterator()
-batch = iterator.next()
 
 
 fig, ax = plt.subplots(ncols=5, figsize=(20, 20))
@@ -53,8 +43,6 @@ for idx in range(5):
 plt.show()  
         
 
-
-
 batch = iterator.next()
 image = np.squeeze(batch[0])
 
@@ -62,9 +50,6 @@ sceneContentApproximator = SceneContentApproximator(num_kernels, kernel_height, 
 
 prediction_batch = sceneContentApproximator.train_and_get(batch, 10)
 
-approximated_image = prediction_batch[0]
-
-residual = np.squeeze(image) - approximated_image[:,:,0]
 
 weights = sceneContentApproximator.get_weights()[0]
 weights_min = tf.reduce_min(weights).numpy()
