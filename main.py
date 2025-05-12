@@ -26,7 +26,7 @@ loss_constant_lambda = 1.0
 
 
 
-dataset = getDatasetFromDirectory(os.path.join('datasets', 'coco2017'), 1)
+dataset = getDatasetFromDirectory(os.path.join('datasets', 'coco2017'), 32)
 
 dataset = dataset.take(512)
 
@@ -49,7 +49,7 @@ image = np.squeeze(batch[0])
 
 sceneContentApproximator = SceneContentApproximator(num_kernels, kernel_height, kernel_width, learning_rate, loss_constant_alpha, loss_constant_lambda)
 
-prediction_batch = sceneContentApproximator.train_and_get(batch, 10)
+prediction_batch = sceneContentApproximator(batch)
 
 
 weights = sceneContentApproximator.get_weights()[0]

@@ -27,7 +27,7 @@ class SceneContentApproximator(Model):
         return self.conv(input)
     
     # expects grayscaled images (num_colorchannels = 1)
-    def train(self, image_batch, epochs):
+    def train(self, dataset, epochs):
 
         def custom_loss(y_true, y_pred):
             # y_true.shape (batch_size, resize_height, resize_width, num_colorchannels)
@@ -53,8 +53,9 @@ class SceneContentApproximator(Model):
             gradients = tape.gradient(loss, self.trainable_variables)
             optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         
-        for epoch in range (epochs):
-            train_step(image_batch)
+        for _ in range (epochs):
+            for image_batch in dataset:
+                train_step(image_batch)
 
 
     # expects batches of shape (batch_size, image_height, image_width, num_colorchannels)
