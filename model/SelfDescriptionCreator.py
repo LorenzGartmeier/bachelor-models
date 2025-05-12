@@ -67,7 +67,7 @@ class SelfDescriptionCreator(Model):
     # expects batches from the SceneContentApproximator of shape (batch_size, image_height, image_width, num_kernels)
     def train_and_get(self, image_batch, epochs):#
         self.train(image_batch, epochs)
-        return self.call(image_batch)
+        return self.get_weights()
     
 
 
