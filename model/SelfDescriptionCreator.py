@@ -2,6 +2,7 @@ import math
 from keras import Model, layers
 import keras
 import tensorflow as tf
+import numpy as np
 
 
 class SelfDescriptionCreator(Model):
@@ -22,8 +23,10 @@ class SelfDescriptionCreator(Model):
         return self.conv(input)
     
     # expects a batch with shape (batch_size, image_height, image_width, num_kernels)
-    def train(self, image_batch, epochs):
+    def train(self, image_batch, epochs, L):
 
+
+        # expects a batch of potentially resized, grayscaled images
         def custom_loss(y_true, y_pred):
             # y_true.shape (batch_size, image_height, image_width, num_colorchannels)
             # y_true.shape (batch_size, resize_height, resize_width, num_kernels)
@@ -48,11 +51,21 @@ class SelfDescriptionCreator(Model):
             gradients = tape.gradient(loss, self.trainable_variables)
             optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         
-        for epoch in range (epochs):
-            train_step(image_batch)
+
+        image_height = len(image_batch[0])
+        image_width = len(image_batch[0][0])
+        for _ in range (epochs):
+            for l in L:
+                # Perform bilinear downsampling
+                downsampled_batch = tf.image.resize(
+                    image_batch,
+                    size=(image_height*(2^(l-1)), image_width*(2^(l-1))),
+                    method=tf.image.ResizeMethod.BILINEAR
+                )
+                train_step(downsampled_batch)
 
     # expects batches from the SceneContentApproximator of shape (batch_size, image_height, image_width, num_kernels)
-    def train_and_get(self, image_batch, epochs):
+    def train_and_get(self, image_batch, epochs):#
         self.train(image_batch, epochs)
         return self.call(image_batch)
     
