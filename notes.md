@@ -1,0 +1,1 @@
+path to imagenet1k0: /home/lorenzgartmeier/.cache/kagglehub/datasets/sautkin/imagenet1k0/versions/2
