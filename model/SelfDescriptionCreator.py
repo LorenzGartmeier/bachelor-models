@@ -22,14 +22,14 @@ class SelfDescriptionCreator(Model):
         )
 
     def call(self, inputs):
-        # Input shape: (batch_size, image_height, image_width, num_kernels)
-        batch_size, H, W, _ = tf.unstack(tf.shape(inputs))
-        total_error = tf.zeros((batch_size, H, W), dtype=inputs.dtype)
+        # Input shape: (1, image_height, image_width, num_kernels)
+        batch_size, image_height, image_width, nunm_kernels = tf.unstack(tf.shape(inputs))
+        total_error = tf.zeros((batch_size, image_height, image_width), dtype=inputs.dtype)
 
         # Process each scale
         for l in range(1, self.L + 1):
             factor = 2 ** (l - 1)
-            target_size = (H // factor, W // factor)
+            target_size = (image_height // factor, image_width // factor)
             
             # 1. Bilinear downsampling
             downsampled = tf.image.resize(
@@ -46,7 +46,7 @@ class SelfDescriptionCreator(Model):
             error = downsampled - r_hat
             upsampled_error = tf.image.resize(
                 error, 
-                (H, W),
+                (image_height, image_width),
                 method='bilinear'
             )
             
@@ -60,7 +60,7 @@ class SelfDescriptionCreator(Model):
         return inputs  # Maintain Keras functional API
 
     
-    # expects a batch with shape (batch_size, image_height, image_width, num_kernels)
+    # expects a batch with shape (1, image_height, image_width, num_kernels)
     def train(self, image_batch, epochs, L):
                                                 
         optimizer = keras.optimizers.AdamW(self.learning_rate)
@@ -70,32 +70,32 @@ class SelfDescriptionCreator(Model):
             with tf.GradientTape() as tape:
 
                 # ignore prediction
-                prediction = self(image_batch, training=True)
+                _ = self(image_batch, training=True)
 
                 # single value
-                loss = self.losses[0]
+                loss = tf.add_n(self.losses)
             
             # Get gradients and update weights
             gradients = tape.gradient(loss, self.trainable_variables)
             optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         
-
-        image_height = len(image_batch[0])
-        image_width = len(image_batch[0][0])
         for _ in range (epochs):
-            for l in L:
-                # Perform bilinear downsampling
-                downsampled_batch = tf.image.resize(
-                    image_batch,
-                    size=(image_height*(2^(l-1)), image_width*(2^(l-1))),
-                    method=tf.image.ResizeMethod.BILINEAR
-                )
-                train_step(downsampled_batch)
+            train_step(image_batch)
 
     # expects batches from the SceneContentApproximator of shape (batch_size, image_height, image_width, num_kernels)
-    def train_and_get(self, image_batch, epochs):#
-        self.train(image_batch, epochs)
-        return self.get_weights()
+    # returns a list of shape (batch_size, num_weights)
+    def train_and_get(self, image_batch, epochs):
+        residual_list = tf.unstack(image_batch, dim = 0)
+        residual_list = [tf.expand_dims(x, axis=0) for x in list]
+        selfdescriptions_list = []
+
+        for image in residual_list:
+            self.train(image, epochs)
+            weights = self.get_weights()[0]
+            flattened_weights = tf.reshape(weights, [-1])
+            selfdescriptions_list.append(flattened_weights)
+
+        return tf.stack(selfdescriptions_list, axis=0)
     
 
 
