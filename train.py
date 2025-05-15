@@ -69,3 +69,7 @@ all_selfdescriptions = tf.concat(all_selfdescriptions, axis = 0)
 
 
 attributor = Attributor(all_selfdescriptions.numpy(), np.squeeze(all_labels.numpy()), 3)
+
+batch = labeled_dataset.as_numpy_iterator().next()
+
+predictions = attributor.predict(batch)
