@@ -175,3 +175,5 @@ cython_debug/
 
 # exclude datasets
 datasets/
+
+.h5
