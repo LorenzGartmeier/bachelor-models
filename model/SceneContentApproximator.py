@@ -47,46 +47,59 @@ class SceneContentApproximator(Model):
                 prediction = self(image_batch, training=True)
 
                 # single value
-                loss = custom_loss(image_batch, prediction)
+                loss = custom_loss(image_batch, prediction) + self.losses[0]
             
             # Get gradients and update weights
             gradients = tape.gradient(loss, self.trainable_variables)
+            # Check if any gradient is None
+            if any(grad is None for grad in gradients):
+                tf.print("Warning: One or more gradients are None.")
             optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         
-        for _ in range (epochs):
+        for i in range (epochs):
+            tf.print("Epoch: ", i)
             for image_batch in dataset:
                 train_step(image_batch)
-
-
-    # expects batches of shape (batch_size, image_height, image_width, num_colorchannels)
-    # with num_colorchannels = 1 for grayscaled images
-    # output: prediction batch with shape (batch_size, image_height, image_width, num_kernels)
-    def train_and_get(self, image_batch, epochs):
-        self.train(image_batch, epochs)
-        return self.call(image_batch)
     
 
 
 class KernelConstraint(keras.constraints.Constraint):
-
-    def __init__(self, ):
+    def __init__(self):
         super().__init__()
 
 
     def __call__(self, w):
-            
-        # shape of w: (kernel_height, kernel_width, num_colorchannels (1 in case of grayscaled), num_kernels)
+        # Get the shape components dynamically
+        kernel_height, kernel_width, num_colorchannels, num_kernels = tf.unstack(tf.shape(w))
+        height_mid = kernel_height // 2
+        width_mid = kernel_width // 2
 
-        w_shape = w.shape
-        middle_zero_tensor = np.ones(w_shape)
+        # Create indices for the center position (h_mid, w_mid)
+        indices = tf.stack([height_mid, width_mid])
+        indices = tf.reshape(indices, [1, 2])  # Shape (1, 2)
 
-        middle_zero_tensor[int(w_shape[0]/2), int(w_shape[1]/2), :, :] = 0
+        # Create a 2D tensor with 1 at the center position
+        updates = tf.ones([1], dtype=w.dtype)
+        shape = tf.stack([kernel_height, kernel_width])
+        center_spatial = tf.scatter_nd(indices, updates, shape)
 
-        middle_zero_w =  w * middle_zero_tensor
+        # Reshape to (h, w, 1, 1) for broadcasting
+        center_spatial = tf.reshape(center_spatial, [kernel_height, kernel_width, 1, 1])
 
+        # Tile to match input and output channels dimensions
+        center_mask = tf.tile(center_spatial, [1, 1, num_colorchannels, num_kernels])
 
-        sums = tf.reduce_sum(middle_zero_w, [0,1,2], keepdims = True)   
-        return middle_zero_w / sums
+        # Create mask (0 at center, 1 elsewhere)
+        mask = 1 - center_mask
+
+        # Zero out the center positions in the kernel
+        w_zeroed = w * mask
+
+        # Compute sum of each kernel
+        sum_per_kernel = tf.reduce_sum(w_zeroed, axis=[0, 1, 2], keepdims=True)
+
+        # Normalize each kernel to sum to 1
+        return w_zeroed / sum_per_kernel
 
     
 class KernelDiversityLoss(keras.regularizers.Regularizer):
@@ -103,11 +116,10 @@ class KernelDiversityLoss(keras.regularizers.Regularizer):
     def __call__(self, kernel_tensor):
             # shape: (1, kernel_height, kernel_width, num_kernels)
 
-            # shape (kernel_height * kernel_width, num_kernels)
-            # the paper uses (num_kernels, kernel_height * kernel_width), the difference is to be examined
-            flattened_kernels = tf.squeeze(tf.reshape(kernel_tensor, [1, self.kernel_height * self.kernel_width, self.num_kernels])) 
+            # shape (num_kernels, kernel_height * kernel_width)
+            flattened_kernels = tf.transpose(tf.squeeze(tf.reshape(kernel_tensor, [1, self.kernel_height * self.kernel_width, self.num_kernels])))
 
 
 
-            singular_values = tf.linalg.svd(flattened_kernels)
+            singular_values = tf.linalg.svd(flattened_kernels, compute_uv=False)
             return - self.loss_constant_lambda * tf.reduce_sum(math.log(singular_values + self.loss_constant_alpha))
