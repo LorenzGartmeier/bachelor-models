@@ -6,15 +6,13 @@ import numpy as np
 
 
 class SelfDescriptionCreator(Model):
-    def __init__(self, B=11, L=3, K=8):
+    def __init__(self, kernel_height, kernel_width):
         super(SelfDescriptionCreator, self).__init__()
-        self.B = B  # 11x11 neighborhood size
-        self.L = L  # 3 scales
-        self.K = K  # 8 residuals
+        
         
         # Depthwise convolution (one 11x11 filter per residual channel)
         self.depthwise_conv = tf.keras.layers.DepthwiseConv2D(
-            kernel_size=(B, B),
+            kernel_size=(kernel_height,  kernel_width),
             depth_multiplier=1,
             padding='same',
             use_bias=False,
