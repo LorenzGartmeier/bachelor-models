@@ -1,5 +1,6 @@
-from GMM import GMM as Gmm
+from model.GMM import GMM
 import numpy as np
+from collections import defaultdict
 
 class Attributor:
 
@@ -8,17 +9,21 @@ class Attributor:
     # labels: shape (n_samples), numerical values
     def __init__(self, data, labels, n_components):
           
-        self.gmm_dictionary = {}
-        unique_labels = np.unique(labels)
-        label_data_dict = {label: data[labels == label] for label in unique_labels}
+        label_samples_dict = group_samples_by_label(labels, data)
+        self.gmm_dict = {}
+
+        for label, samples in label_samples_dict.items():
+            gmm = GMM(n_components)
+            gmm.fit(samples)
+            self.gmm_dict[label] = gmm
 
 
-        # initialize and train GMMs
-        for label in unique_labels:
-            gmm = Gmm(n_components)
-            gmm.fit(label_data_dict[label])
-            self.gmm_dictionary.update({label : gmm})
 
+
+# Example usage:
+# labels = np.array([0, 1, 0, 2, 1, 0])
+# samples = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]])
+# result = group_samples_by_label(labels, samples)
 
     # X: shape (n_samples, n_features)
     # output: shape (n_samples), conatining the labels with the highest likelihood or -1
@@ -44,6 +49,23 @@ class Attributor:
 
         return np.array(predictions)
         
+
+def group_samples_by_label(labels, samples):
+    # Initialize a dictionary to store samples for each label
+    label_to_samples = {}
+    
+    # Get unique labels
+    unique_labels = np.unique(labels)
+    
+    # For each unique label, gather all corresponding samples
+    for label in unique_labels:
+        # Find indices where labels match the current label
+        indices = np.where(labels == label)[0]
+        
+        # Extract samples with the current label and store in the dictionary
+        label_to_samples[label] = samples[indices]
+    
+    return label_to_samples
 
 
 
