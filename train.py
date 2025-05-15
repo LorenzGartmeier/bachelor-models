@@ -1,9 +1,10 @@
 import os
-
+import numpy as np
 import tensorflow as tf
 from dataloading.loadResized import getDatasetFromDirectory, getLabeledDatasetFromDirectory
-from model import Attributor, SelfDescriptionCreator
 from model.SceneContentApproximator import SceneContentApproximator
+from model.SelfDescriptionCreator import SelfDescriptionCreator
+from model.Attributor import Attributor
 
 
 resize_height, resize_width = 256, 256
@@ -21,50 +22,50 @@ loss_constant_alpha = 0.01
 # please refer to the paper 
 loss_constant_lambda = 1.0
 
-sceneContentApproximator_epochs = 10
+sceneContentApproximator_epochs = 1
 
 selfdescriptionCreator_epochs = 10
 
-n_components = 3
+num_components = 3
 
 
 
-real_dataset = getDatasetFromDirectory(os.path.join('datasets', 'train2017'), 32)
+real_dataset = getDatasetFromDirectory(os.path.join('datasets', 'coco2017'), 32)
+
+real_dataset = real_dataset.take(512)
 
 sceneContentApproximator = SceneContentApproximator(num_kernels, kernel_height, kernel_width, learning_rate, loss_constant_alpha, loss_constant_lambda)
 
-if os.path.exists(os.path.join('model', 'sceneContentApproximator.h5')):
+if os.path.exists(os.path.join('model', 'sceneContentApproximator.weights.h5')) and False:
     # load the model
-    sceneContentApproximator.load_weights(os.path.join('model', 'sceneContentApproximator.h5'))
+    sceneContentApproximator.build() 
+    sceneContentApproximator.load_weights(os.path.join('model', 'sceneContentApproximator.weights.h5'))
 else:
     # train sceneContentApproximator only with real images
     sceneContentApproximator.train(real_dataset, sceneContentApproximator_epochs)
     # save the model
-    sceneContentApproximator.save_weights(os.path.join('model', 'sceneContentApproximator.h5'))
+    sceneContentApproximator.save_weights(os.path.join('model', 'sceneContentApproximator.weights.h5'))
 
 
 labeled_dataset = getLabeledDatasetFromDirectory('datasets', 32)
 
-selfdescriptionCreator = SelfDescriptionCreator(kernel_height, kernel_width)
+labeled_dataset = labeled_dataset.take(2)
 
-all_labels = tf.constant([], dtype=tf.int32)
-all_residuals = tf.constant([], dtype=tf.float32)
+selfdescriptionCreator = SelfDescriptionCreator(kernel_height, kernel_width, num_components, learning_rate)
+
+all_labels = []
+all_selfdescriptions = []
 
 
 for image_batch, labels in labeled_dataset:
-    resiuals = sceneContentApproximator(image_batch)
-    selfdescriptions = selfdescriptionCreator.train_and_get(resiuals, selfdescriptionCreator_epochs)
-    all_labels = tf.concat([all_labels, labels], axis=0)
-    all_residuals = tf.concat([all_residuals, selfdescriptions], axis=0)
+    residuals = sceneContentApproximator(image_batch)
+    selfdescriptions = selfdescriptionCreator.train_and_get(residuals, selfdescriptionCreator_epochs)
+    all_labels.append(labels)
+    all_selfdescriptions.append(selfdescriptions)
 
-attributor = Attributor(all_labels, all_residuals, 3)
-
-
-
+all_labels = tf.concat(all_labels, axis = 0)
+all_selfdescriptions = tf.concat(all_selfdescriptions, axis = 0)
 
 
 
-
-
-
-
+attributor = Attributor(all_selfdescriptions.numpy(), np.squeeze(all_labels.numpy()), 3)
