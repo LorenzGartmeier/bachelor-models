@@ -6,34 +6,62 @@ import numpy as np
 
 
 class SelfDescriptionCreator(Model):
-    def __init__(self, num_kernels, kernel_height, kernel_width, learning_rate):
+    def __init__(self, B=11, L=3, K=8):
         super(SelfDescriptionCreator, self).__init__()
-
-
-        self.learning_rate = learning_rate
-        self.conv = layers.Conv2D(
-                                    num_kernels, 
-                                    (kernel_height,kernel_width),
-                                    use_bias= False, 
-                                    kernel_constraint = KernelConstraint(), 
-                                    padding='same' # to let the ouput of the layer have the same size as the input
-                                    )
+        self.B = B  # 11x11 neighborhood size
+        self.L = L  # 3 scales
+        self.K = K  # 8 residuals
         
-    def call(self, input):
-        return self.conv(input)
+        # Depthwise convolution (one 11x11 filter per residual channel)
+        self.depthwise_conv = tf.keras.layers.DepthwiseConv2D(
+            kernel_size=(B, B),
+            depth_multiplier=1,
+            padding='same',
+            use_bias=False,
+            activation=None
+        )
+
+    def call(self, inputs):
+        # Input shape: (batch_size, image_height, image_width, num_kernels)
+        batch_size, H, W, _ = tf.unstack(tf.shape(inputs))
+        total_error = tf.zeros((batch_size, H, W), dtype=inputs.dtype)
+
+        # Process each scale
+        for l in range(1, self.L + 1):
+            factor = 2 ** (l - 1)
+            target_size = (H // factor, W // factor)
+            
+            # 1. Bilinear downsampling
+            downsampled = tf.image.resize(
+                inputs,
+                target_size,
+                method='bilinear',
+                antialias=True
+            )
+            
+            # 2. Apply 11x11 convolution
+            r_hat = self.depthwise_conv(downsampled)
+            
+            # 3. Compute and upsample error
+            error = downsampled - r_hat
+            upsampled_error = tf.image.resize(
+                error, 
+                (H, W),
+                method='bilinear'
+            )
+            
+            # 4. Accumulate errors across residuals
+            total_error += tf.reduce_sum(upsampled_error, axis=-1)
+
+        # 5. Compute final loss (mean squared error)
+        loss = tf.reduce_mean(tf.reduce_sum(tf.square(total_error), axis=[1, 2]))
+        self.add_loss(loss)
+        
+        return inputs  # Maintain Keras functional API
+
     
     # expects a batch with shape (batch_size, image_height, image_width, num_kernels)
     def train(self, image_batch, epochs, L):
-
-
-        # expects a batch of potentially resized, grayscaled images
-        def custom_loss(y_true, y_pred):
-            # y_true.shape (batch_size, image_height, image_width, num_colorchannels)
-            # y_true.shape (batch_size, resize_height, resize_width, num_kernels)
-
-            # y_true gets broadcasted (num_colorchannels = 1 required)
-            discrepancy_loss =  math.reduce_sum(math.square(y_true - y_pred))
-            return discrepancy_loss
                                                 
         optimizer = keras.optimizers.AdamW(self.learning_rate)
 
@@ -41,11 +69,11 @@ class SelfDescriptionCreator(Model):
         def train_step(image_batch):
             with tf.GradientTape() as tape:
 
-                # shape: ()
+                # ignore prediction
                 prediction = self(image_batch, training=True)
 
                 # single value
-                loss = custom_loss(image_batch, prediction)
+                loss = self.losses[0]
             
             # Get gradients and update weights
             gradients = tape.gradient(loss, self.trainable_variables)

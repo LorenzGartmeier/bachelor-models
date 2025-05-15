@@ -1,4 +1,4 @@
-from model import GMM
+from GMM import GMM as Gmm
 import numpy as np
 
 class Attributor:
@@ -15,7 +15,7 @@ class Attributor:
 
         # initialize and train GMMs
         for label in unique_labels:
-            gmm = GMM(n_components)
+            gmm = Gmm(n_components)
             gmm.fit(label_data_dict[label])
             self.gmm_dictionary.update({label : gmm})
 
@@ -31,7 +31,7 @@ class Attributor:
             best_label = -1
 
             for label, gmm in self.gmm_dictionary.items():
-                likelihood = gmm.score(x.reshape(1, -1))  # Reshape x to match GMM input requirements
+                likelihood = gmm.get_likelihood(x.reshape(1, -1))  # Reshape x to match GMM input requirements
                 if likelihood > max_likelihood:
                     max_likelihood = likelihood
                     best_label = label

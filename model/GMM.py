@@ -1,7 +1,7 @@
 import numpy as np
 import sklearn
 
-class GMM_EM:
+class GMM:
     def __init__(self, n_components):
         self.n_components = n_components
         self.model = sklearn.mixture.GaussianMixture(n_components=n_components, covariance_type='full', random_state=42)
