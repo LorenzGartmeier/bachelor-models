@@ -1,4 +1,3 @@
-import numpy as np
 import sklearn
 
 class GMM:
@@ -13,6 +12,5 @@ class GMM:
     
     def get_likelihood(self, X):
         # X: shape (n_samples, n_features)
-
         # output: shape (n_samples), log likelihood for each sample
-        return self.model.score_sample(X)
+        return self.model.score_samples(X)
