@@ -6,10 +6,11 @@ import numpy as np
 
 
 class SelfDescriptionCreator(Model):
-    def __init__(self, kernel_height, kernel_width):
+    def __init__(self, kernel_height, kernel_width, L, learning_rate):
         super(SelfDescriptionCreator, self).__init__()
         
-        
+        self.L = L
+        self.learning_rate = learning_rate
         # Depthwise convolution (one 11x11 filter per residual channel)
         self.depthwise_conv = tf.keras.layers.DepthwiseConv2D(
             kernel_size=(kernel_height,  kernel_width),
@@ -29,7 +30,7 @@ class SelfDescriptionCreator(Model):
             factor = 2 ** (l - 1)
             target_size = (image_height // factor, image_width // factor)
             
-            # 1. Bilinear downsampling
+            # Bilinear downsampling
             downsampled = tf.image.resize(
                 inputs,
                 target_size,
@@ -37,7 +38,6 @@ class SelfDescriptionCreator(Model):
                 antialias=True
             )
             
-            # 2. Apply 11x11 convolution
             r_hat = self.depthwise_conv(downsampled)
             
             # 3. Compute and upsample error
@@ -59,7 +59,7 @@ class SelfDescriptionCreator(Model):
 
     
     # expects a batch with shape (1, image_height, image_width, num_kernels)
-    def train(self, image_batch, epochs, L):
+    def train(self, image_batch, epochs):
                                                 
         optimizer = keras.optimizers.AdamW(self.learning_rate)
 
@@ -83,10 +83,10 @@ class SelfDescriptionCreator(Model):
     # expects batches from the SceneContentApproximator of shape (batch_size, image_height, image_width, num_kernels)
     # returns a list of shape (batch_size, num_weights)
     def train_and_get(self, image_batch, epochs):
-        residual_list = tf.unstack(image_batch, dim = 0)
-        residual_list = [tf.expand_dims(x, axis=0) for x in list]
+        residual_list = tf.unstack(image_batch)
+        residual_list = [tf.expand_dims(x, axis=0) for x in residual_list]
         selfdescriptions_list = []
-
+        i = 0
         for image in residual_list:
             self.train(image, epochs)
             weights = self.get_weights()[0]
@@ -105,7 +105,6 @@ class KernelConstraint(keras.constraints.Constraint):
 
     def __call__(self, w):
             
-        # Get the shape components dynamically
         kernel_height, kernel_width, num_colorchannels, num_kernels = tf.unstack(tf.shape(w))
         height_mid = kernel_height // 2
         width_mid = kernel_width // 2
