@@ -23,7 +23,7 @@ class SelfDescriptionCreator(Model):
 
     def call(self, inputs):
         # Input shape: (1, image_height, image_width, num_kernels)
-        batch_size, image_height, image_width, nunm_kernels = tf.unstack(tf.shape(inputs))
+        batch_size, image_height, image_width, num_kernels = tf.unstack(tf.shape(inputs))
         total_error = tf.zeros((batch_size, image_height, image_width), dtype=inputs.dtype)
 
         # Process each scale
@@ -107,13 +107,30 @@ class KernelConstraint(keras.constraints.Constraint):
 
     def __call__(self, w):
             
-        # shape of w: (kernel_height, kernel_width, num_colorchannels (1 in case of grayscaled), num_kernels)
+        # Get the shape components dynamically
+        kernel_height, kernel_width, num_colorchannels, num_kernels = tf.unstack(tf.shape(w))
+        height_mid = kernel_height // 2
+        width_mid = kernel_width // 2
 
-        w_shape = w.shape
-        middle_zero_tensor = np.ones(w_shape)
+        # Create indices for the center position (h_mid, w_mid)
+        indices = tf.stack([height_mid, width_mid])
+        indices = tf.reshape(indices, [1, 2])  # Shape (1, 2)
 
-        middle_zero_tensor[int(w_shape[0]/2), int(w_shape[1]/2), :, :] = 0
+        # Create a 2D tensor with 1 at the center position
+        updates = tf.ones([1], dtype=w.dtype)
+        shape = tf.stack([kernel_height, kernel_width])
+        center_spatial = tf.scatter_nd(indices, updates, shape)
 
-        return w * middle_zero_tensor
+        # Reshape to (h, w, 1, 1) for broadcasting
+        center_spatial = tf.reshape(center_spatial, [kernel_height, kernel_width, 1, 1])
+
+        # Tile to match input and output channels dimensions
+        center_mask = tf.tile(center_spatial, [1, 1, num_colorchannels, num_kernels])
+
+        # Create mask (0 at center, 1 elsewhere)
+        mask = 1 - center_mask
+
+        # Zero out the center positions in the kernel
+        return w * mask
 
     
