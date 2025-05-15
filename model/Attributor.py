@@ -35,7 +35,7 @@ class Attributor:
             max_likelihood = -np.inf
             best_label = -1
 
-            for label, gmm in self.gmm_dictionary.items():
+            for label, gmm in self.gmm_dict.items():
                 likelihood = gmm.get_likelihood(x.reshape(1, -1))  # Reshape x to match GMM input requirements
                 if likelihood > max_likelihood:
                     max_likelihood = likelihood
