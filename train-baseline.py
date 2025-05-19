@@ -28,9 +28,11 @@ selfdescriptionCreator_epochs = 10
 
 num_components = 3
 
+batch_size = 32
 
 
-real_dataset = getDatasetFromDirectory(os.path.join('datasets', 'coco2017'), 32)
+
+real_dataset = getDatasetFromDirectory(os.path.join('datasets', 'coco2017'), batch_size)
 
 real_dataset = real_dataset.take(512)
 
@@ -38,7 +40,7 @@ sceneContentApproximator = SceneContentApproximator(num_kernels, kernel_height, 
 
 if os.path.exists(os.path.join('model', 'sceneContentApproximator.weights.h5')) and False:
     # load the model
-    sceneContentApproximator.build() 
+    sceneContentApproximator.build(input_shape=(batch_size, resize_height, resize_width, 1)) 
     sceneContentApproximator.load_weights(os.path.join('model', 'sceneContentApproximator.weights.h5'))
 else:
     # train sceneContentApproximator only with real images
@@ -47,7 +49,7 @@ else:
     sceneContentApproximator.save_weights(os.path.join('model', 'sceneContentApproximator.weights.h5'))
 
 
-labeled_dataset = getLabeledDatasetFromDirectory('datasets', 32)
+labeled_dataset = getLabeledDatasetFromDirectory('datasets', batch_size)
 
 labeled_dataset = labeled_dataset.take(2)
 
