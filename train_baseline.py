@@ -2,9 +2,9 @@ import os
 import numpy as np
 import tensorflow as tf
 from dataloading.loadResized import getDatasetFromDirectory, getLabeledDatasetFromDirectory
-from model.SceneContentApproximator import SceneContentApproximator
-from model.SelfDescriptionCreator import SelfDescriptionCreator
-from model.Attributor import Attributor
+from baseline_model.SceneContentApproximator import SceneContentApproximator
+from baseline_model.SelfDescriptionCreator import SelfDescriptionCreator
+from baseline_model.Attributor import Attributor
 
 
 resize_height, resize_width = 256, 256

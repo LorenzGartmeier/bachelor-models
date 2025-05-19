@@ -1,4 +1,4 @@
-from model.GMM import GMM
+from baseline_model.GMM import GMM
 import numpy as np
 from collections import defaultdict
 
