@@ -6,7 +6,7 @@ import keras
 import numpy as np
 from keras import Model, layers
 from dataloading.loadResized import getDatasetFromDirectory
-from model.SceneContentApproximator import SceneContentApproximator
+from baseline_model.SceneContentApproximator import SceneContentApproximator
 
 resize_height, resize_width = 256, 256
 
