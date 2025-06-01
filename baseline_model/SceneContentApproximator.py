@@ -9,8 +9,8 @@ class SceneContentApproximator(Model):
 
 
 
-    def __init__(self, num_kernels, kernel_height, kernel_width, learning_rate, loss_constant_alpha, loss_constant_lambda):
-        super(SceneContentApproximator, self).__init__()
+    def __init__(self, num_kernels, kernel_height, kernel_width, learning_rate, loss_constant_alpha, loss_constant_lambda, **kwargs):
+        super(SceneContentApproximator, self).__init__(**kwargs)
 
 
         self.learning_rate = learning_rate
