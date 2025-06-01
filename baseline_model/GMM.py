@@ -6,10 +6,10 @@ tfd = tfp.distributions
 
 
 class GMM:
-    def __init__(self, num_components):
+    def __init__(self, num_components, selfdescription_lengh):
         self.num_components = num_components
-        self.locs = tf.Variable(tf.random.normal([num_components, 2]))
-        self.scale_diag = tf.nn.softplus(tf.Variable(tf.random.normal([num_components, 2])))
+        self.locs = tf.Variable(tf.random.normal([num_components, selfdescription_lengh]))
+        self.scale_diag = tf.nn.softplus(tf.Variable(tf.random.normal([num_components, selfdescription_lengh])))
         self.mix_probs = tf.nn.softmax(tf.Variable(tf.random.normal([num_components])))
 
     def fit(self, dataset, epochs, learning_rate=0.1):
