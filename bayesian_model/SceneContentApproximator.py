@@ -49,11 +49,9 @@ class ConstrainedBayesianConv2D(layers.Layer):
         posterior = tfd.Normal(loc=self.posterior_loc, 
                                scale=tf.nn.softplus(self.posterior_scale))
         
-        # Sample or use mean
-        if training:
-            v = posterior.sample()
-        else:
-            v = self.posterior_loc  # Use mean for inference
+
+        v = posterior.sample()
+
 
         # Reconstruct full kernels
         kernel_shape = [self.kernel_size[0], self.kernel_size[1], 
@@ -87,6 +85,7 @@ class ConstrainedBayesianConv2D(layers.Layer):
         
         # Normalize each kernel to sum to 1
         sums = tf.reduce_sum(kernel_zeroed, axis=[0, 1], keepdims=True)
+        # small constatnt to avoid division by zero
         kernel_normalized = kernel_zeroed / (sums + 1e-7)
         
         # Add regularization loss if in training mode
@@ -160,5 +159,41 @@ class SceneContentApproximator(Model):
             for image_batch in dataset:
                 train_step(image_batch)
 
-# Keep your original KernelDiversityLoss and KernelConstraint classes
-# (KernelConstraint is no longer needed in Bayesian layer but kept for reference)
+    def predict_with_uncertainty(self, x, n_samples=100):
+        predictions = []
+        
+        # Force training=True to enable sampling
+        for _ in range(n_samples):
+            pred = self.conv(x, training=True)
+            predictions.append(pred)
+        
+        predictions = tf.stack(predictions)
+        
+        # Calculate statistics
+        mean_pred = tf.reduce_mean(predictions, axis=0)
+        predictive_variance = tf.reduce_mean(tf.square(predictions - mean_pred), axis=0)
+        predictive_std = tf.sqrt(predictive_variance)
+        
+        return mean_pred, predictive_std
+
+class KernelDiversityLoss(regularizers.Regularizer):
+
+    def __init__(self, loss_constant_alpha, loss_constant_lambda, num_kernels, kernel_height, kernel_width):
+        super().__init__()
+        self.num_kernels = num_kernels
+        self.kernel_height = kernel_height
+        self.kernel_width = kernel_width
+        self.loss_constant_lambda = loss_constant_lambda
+        self.loss_constant_alpha = loss_constant_alpha
+
+
+    def __call__(self, kernel_tensor):
+            # shape: (1, kernel_height, kernel_width, num_kernels)
+
+            # shape (num_kernels, kernel_height * kernel_width)
+            flattened_kernels = tf.transpose(tf.squeeze(tf.reshape(kernel_tensor, [1, self.kernel_height * self.kernel_width, self.num_kernels])))
+
+
+
+            singular_values = tf.linalg.svd(flattened_kernels, compute_uv=False)
+            return - self.loss_constant_lambda * tf.reduce_sum(tf.math.log(singular_values + self.loss_constant_alpha))
