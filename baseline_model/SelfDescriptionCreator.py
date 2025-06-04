@@ -83,6 +83,7 @@ class SelfDescriptionCreator(Model):
     # expects batches from the SceneContentApproximator of shape (batch_size, image_height, image_width, num_kernels)
     # returns a list of shape (batch_size, num_weights)
     def train_and_get(self, image_batch, epochs):
+        self.reset_conv_weights()
         residual_list = tf.unstack(image_batch)
         residual_list = [tf.expand_dims(x, axis=0) for x in residual_list]
         selfdescriptions_list = []
@@ -95,6 +96,17 @@ class SelfDescriptionCreator(Model):
 
         return tf.stack(selfdescriptions_list, axis=0)
     
+    def reset_conv_weights(self):
+        for layer in self.layers:
+            if isinstance(layer, tf.keras.layers.DepthwiseConv2D):
+                layer.depthwise_kernel.assign(
+                    layer.depthwise_initializer(tf.shape(layer.depthwise_kernel))
+                )
+                if layer.use_bias:
+                    layer.bias.assign(
+                        layer.bias_initializer(tf.shape(layer.bias))
+                    )
+
 
 
 class KernelConstraint(keras.constraints.Constraint):

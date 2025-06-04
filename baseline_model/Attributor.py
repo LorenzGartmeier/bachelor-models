@@ -17,12 +17,12 @@ class Attributor:
     # label:  same label for all images in data
     # data: unlabeled image dataset
     # trains and adds a gmm
-    def add_gmm(self, label, data):
+    def add_gmm(self, label, data, epochs):
         if label not in self.gmm_dict:
             self.gmm_dict[label] = GMM(self.n_components, self.selfdescription_length)
         
         # Fit the GMM to the data for the specific label
-        self.gmm_dict[label].fit(data, epochs=100, learning_rate=0.01)
+        self.gmm_dict[label].fit(data, epochs= epochs, learning_rate=0.01)
 
     # tau: threshold for ood detection
     # batch: numpy array of shape (batch_size, selfdescription_length)

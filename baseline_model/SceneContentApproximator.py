@@ -10,7 +10,7 @@ class SceneContentApproximator(Model):
 
 
     def __init__(self, num_kernels, kernel_height, kernel_width, learning_rate, loss_constant_alpha, loss_constant_lambda, **kwargs):
-        super(SceneContentApproximator, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
 
         self.num_kernels = num_kernels
@@ -65,6 +65,19 @@ class SceneContentApproximator(Model):
             tf.print("Epoch: ", i)
             for image_batch in dataset:
                 train_step(image_batch)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'num_kernels': self.num_kernels,
+            'kernel_height': self.kernel_height,
+            'kernel_width': self.kernel_width,
+            'learning_rate': self.learning_rate,
+            'loss_constant_alpha': self.loss_constant_alpha,
+            'loss_constant_lambda': self.loss_constant_lambda,
+            # ...add any other args...
+        })
+        return config
     
 
 
@@ -128,17 +141,3 @@ class KernelDiversityLoss(keras.regularizers.Regularizer):
 
             singular_values = tf.linalg.svd(flattened_kernels, compute_uv=False)
             return - self.loss_constant_lambda * tf.reduce_sum(math.log(singular_values + self.loss_constant_alpha))
-    
-
-    def get_config(self):
-        config = super().get_config()
-        config.update({
-            'num_kernels': self.num_kernels,
-            'kernel_height': self.kernel_height,
-            'kernel_width': self.kernel_width,
-            'learning_rate': self.learning_rate,
-            'loss_constant_alpha': self.loss_constant_alpha,
-            'loss_constant_lambda': self.loss_constant_lambda,
-            # ...add any other args...
-        })
-        return config
