@@ -5,9 +5,9 @@ import numpy as np
 tfd = tfp.distributions
 
 class ConstrainedBayesianConv2D(layers.Layer):
-    def __init__(self, filters, kernel_size, kernel_regularizer=None, padding='same', **kwargs):
+    def __init__(self, num_kernels, kernel_size, kernel_regularizer=None, padding='same', **kwargs):
         super().__init__(**kwargs)
-        self.filters = filters
+        self.num_kernels = num_kernels
         self.kernel_size = kernel_size
         self.padding = padding
         self.kernel_regularizer = kernel_regularizer
@@ -34,13 +34,13 @@ class ConstrainedBayesianConv2D(layers.Layer):
         # Posterior parameters (trainable)
         self.posterior_loc = self.add_weight(
             name='posterior_loc',
-            shape=[self.non_center_elements, in_channels, self.filters],
+            shape=[self.non_center_elements, in_channels, self.num_kernels],
             initializer='random_normal',
             trainable=True)
         
         self.posterior_scale = self.add_weight(
             name='posterior_scale',
-            shape=[self.non_center_elements, in_channels, self.filters],
+            shape=[self.non_center_elements, in_channels, self.num_kernels],
             initializer=tf.initializers.constant(-5.),  # Initialized for softplus(scale) ≈ 0.01
             trainable=True)
         
@@ -141,7 +141,6 @@ class SceneContentApproximator(Model):
         @tf.function
         def train_step(image_batch):
             with tf.GradientTape() as tape:
-                # Forward pass
                 prediction = self(image_batch, training=True)
                 
                 # Reconstruction loss
@@ -150,7 +149,6 @@ class SceneContentApproximator(Model):
                 # Total loss = reconstruction + KL + regularization
                 total_loss = recon_loss + tf.reduce_sum(self.losses)
             
-            # Get gradients and update weights
             gradients = tape.gradient(total_loss, self.trainable_variables)
             optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         
@@ -162,19 +160,28 @@ class SceneContentApproximator(Model):
     def predict_with_uncertainty(self, x, n_samples=100):
         predictions = []
         
-        # Force training=True to enable sampling
         for _ in range(n_samples):
             pred = self.conv(x, training=True)
             predictions.append(pred)
-        
+
         predictions = tf.stack(predictions)
-        
-        # Calculate statistics
-        mean_pred = tf.reduce_mean(predictions, axis=0)
+
+        mean_pred = tf.reduce_mean(predictions)
         predictive_variance = tf.reduce_mean(tf.square(predictions - mean_pred), axis=0)
         predictive_std = tf.sqrt(predictive_variance)
         
         return mean_pred, predictive_std
+    
+    def predict(self, x, n_samples=100):
+        predictions = []
+        
+        for _ in range(n_samples):
+            pred = self.conv(x, training=True)
+            predictions.append(pred)
+
+        predictions = tf.stack(predictions)
+
+        return predictions
 
 class KernelDiversityLoss(regularizers.Regularizer):
 
