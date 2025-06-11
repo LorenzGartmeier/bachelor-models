@@ -111,35 +111,24 @@ class SelfDescriptionCreator(Model):
 
 class KernelConstraint(keras.constraints.Constraint):
 
-    def __init__(self, ):
+    def __init__(self, kernel_shape):
         super().__init__()
+
+
+        kernel_width, kernel_height, num_kernels, _ = kernel_shape
+        mask = np.ones(kernel_shape)
+        mask[kernel_height//2, kernel_width//2, :, :] = 0
+        self.mask = tf.convert_to_tensor(mask, dtype=tf.float32)
 
 
     def __call__(self, w):
             
-        kernel_height, kernel_width, num_colorchannels, num_kernels = tf.unstack(tf.shape(w))
-        height_mid = kernel_height // 2
-        width_mid = kernel_width // 2
+        w_zeroed = w * self.mask
 
-        # Create indices for the center position (h_mid, w_mid)
-        indices = tf.stack([height_mid, width_mid])
-        indices = tf.reshape(indices, [1, 2])  # Shape (1, 2)
+        # Compute sum of each kernel
+        sum_per_kernel = tf.reduce_sum(w_zeroed, axis=[0, 1, 2], keepdims=True)
 
-        # Create a 2D tensor with 1 at the center position
-        updates = tf.ones([1], dtype=w.dtype)
-        shape = tf.stack([kernel_height, kernel_width])
-        center_spatial = tf.scatter_nd(indices, updates, shape)
-
-        # Reshape to (h, w, 1, 1) for broadcasting
-        center_spatial = tf.reshape(center_spatial, [kernel_height, kernel_width, 1, 1])
-
-        # Tile to match input and output channels dimensions
-        center_mask = tf.tile(center_spatial, [1, 1, num_colorchannels, num_kernels])
-
-        # Create mask (0 at center, 1 elsewhere)
-        mask = 1 - center_mask
-
-        # Zero out the center positions in the kernel
-        return w * mask
+        # Normalize each kernel to sum to 1
+        return w_zeroed / sum_per_kernel
 
     
