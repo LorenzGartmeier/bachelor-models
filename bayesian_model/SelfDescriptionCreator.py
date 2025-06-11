@@ -31,13 +31,13 @@ class BayesianDepthwiseConv2D(layers.Layer):
         # Posterior parameters (trainable)
         self.posterior_loc = self.add_weight(
             name='posterior_loc',
-            shape=[self.non_center_elements, num_kernels, self.num_kernels],
+            shape=kernel_shape,
             initializer='random_normal',
             trainable=True)
         
         self.posterior_scale = self.add_weight(
             name='posterior_scale',
-            shape=[self.non_center_elements, num_kernels, self.num_kernels],
+            shape=kernel_shape,
             initializer=tf.initializers.constant(-5.),  # Initialized for softplus(scale) ≈ 0.01
             trainable=True)
         

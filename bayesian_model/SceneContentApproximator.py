@@ -94,7 +94,7 @@ class ConstrainedBayesianConv2D(layers.Layer):
         )
 
 class SceneContentApproximator(Model):
-    def __init__(self, num_kernels, kernel_height, kernel_width, 
+    def __init__(self, num_kernels, kernel_height, kernel_width,
                  learning_rate, loss_constant_alpha, loss_constant_lambda, **kwargs):
         super().__init__(**kwargs)
         self.num_kernels = num_kernels
@@ -113,7 +113,8 @@ class SceneContentApproximator(Model):
         # Bayesian convolution layer
         self.conv = ConstrainedBayesianConv2D(
             filters=num_kernels,
-            kernel_size=(kernel_height, kernel_width),
+            kernel_height=kernel_height,
+            kernel_width=kernel_width,
             kernel_regularizer=diversity_reg,
             padding='same'
         )
@@ -125,6 +126,8 @@ class SceneContentApproximator(Model):
     def train(self, dataset, epochs):
         optimizer = tf.keras.optimizers.AdamW(self.learning_rate)
         
+
+        kl_factor = 1 / len(dataset)
         @tf.function
         def train_step(image_batch):
             with tf.GradientTape() as tape:
@@ -133,8 +136,12 @@ class SceneContentApproximator(Model):
                 # Reconstruction loss
                 recon_loss = tf.reduce_sum(tf.square(image_batch - prediction))
                 
+
+                kernelDiversityLoss = self.losses[0]
+
+                kl_loss = self.losses[1]
                 # Total loss = reconstruction + KL + regularization
-                total_loss = recon_loss + tf.reduce_sum(self.losses)
+                total_loss = recon_loss + kernelDiversityLoss + kl_factor * kl_loss
             
             gradients = tape.gradient(total_loss, self.trainable_variables)
             optimizer.apply_gradients(zip(gradients, self.trainable_variables))
