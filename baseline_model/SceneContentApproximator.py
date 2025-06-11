@@ -120,16 +120,15 @@ class KernelConstraint(keras.constraints.Constraint):
         mask[kernel_height//2, kernel_width//2, :, :] = 0
         self.mask = tf.convert_to_tensor(mask, dtype=tf.float32)
 
-
     def __call__(self, w):
-        
+
         w_zeroed = w * self.mask
 
         # Compute sum of each kernel
         sum_per_kernel = tf.reduce_sum(w_zeroed, axis=[0, 1, 2], keepdims=True)
 
         # Normalize each kernel to sum to 1
-        return w_zeroed / (sum_per_kernel + 1e-8)
+        return w_zeroed /  sum_per_kernel + self.epsilon * tf.sign(sum_per_kernel)
 
 
 class KernelDiversityLoss(keras.regularizers.Regularizer):
