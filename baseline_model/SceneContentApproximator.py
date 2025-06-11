@@ -24,7 +24,7 @@ class SceneContentApproximator(Model):
                                     (kernel_height,kernel_width),
                                     use_bias= False, 
                                     kernel_regularizer = KernelDiversityLoss(loss_constant_alpha, loss_constant_lambda, num_kernels, kernel_height, kernel_width),
-                                    kernel_constraint = KernelConstraint(), 
+                                    kernel_constraint = KernelConstraint((kernel_height, kernel_height, 1, num_kernels)), # num_colorchannels = 1 for grayscaled images
                                     padding='same' # to let the ouput of the layer have the same size as the input
                                     )
         
@@ -33,6 +33,16 @@ class SceneContentApproximator(Model):
     
     # expects grayscaled images (num_colorchannels = 1)
     def train(self, dataset, epochs):
+
+        num_batches = 0
+        for _ in dataset:
+            num_batches += 1
+
+        history = {
+            'recon_loss': [],
+            'kernel_diversity_loss': [],
+            'total_loss': []
+        }
 
         def custom_loss(y_true, y_pred):
             # y_true.shape (batch_size, resize_height, resize_width, num_colorchannels)
@@ -51,20 +61,39 @@ class SceneContentApproximator(Model):
                 # shape: ()
                 prediction = self(image_batch, training=True)
 
+                custom_loss = custom_loss(image_batch, prediction)
+                diversity_loss = self.losses[0]  # KernelDiversityLoss
+
                 # single value
-                loss = custom_loss(image_batch, prediction) + self.losses[0]
+                total_loss = custom_loss + diversity_loss
             
             # Get gradients and update weights
-            gradients = tape.gradient(loss, self.trainable_variables)
+            gradients = tape.gradient(total_loss, self.trainable_variables)
             # Check if any gradient is None
             if any(grad is None for grad in gradients):
                 tf.print("Warning: One or more gradients are None.")
             optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+
+            return total_loss, custom_loss, diversity_loss
+
+
         
         for i in range (epochs):
             tf.print("Epoch: ", i)
+            epoch_custom_loss = 0.0
+            epoch_kernel_diversity_loss = 0.0
+            epoch_total_loss = 0.0
             for image_batch in dataset:
-                train_step(image_batch)
+                total_loss, custom_loss, diversity_loss = train_step(image_batch)
+                epoch_custom_loss += custom_loss
+                epoch_kernel_diversity_loss += diversity_loss
+                epoch_total_loss += total_loss
+
+            history['recon_loss'].append(epoch_custom_loss / num_batches)
+            history['kernel_diversity_loss'].append(epoch_kernel_diversity_loss / num_batches)
+            history['total_loss'].append(epoch_total_loss / num_batches)
+
+        return history
 
     def get_config(self):
         config = super().get_config()
@@ -100,9 +129,9 @@ class KernelConstraint(keras.constraints.Constraint):
         sum_per_kernel = tf.reduce_sum(w_zeroed, axis=[0, 1, 2], keepdims=True)
 
         # Normalize each kernel to sum to 1
-        return w_zeroed / sum_per_kernel
+        return w_zeroed / (sum_per_kernel + 1e-8)
 
-    
+
 class KernelDiversityLoss(keras.regularizers.Regularizer):
 
     def __init__(self, loss_constant_alpha, loss_constant_lambda, num_kernels, kernel_height, kernel_width):
