@@ -1,23 +1,24 @@
 import tensorflow as tf
+import glob
 import os
 
 def imagepathToTensor(imagepath) -> tf.Tensor:
     img = tf.io.read_file(imagepath)
-    img = tf.io.decode_image(img)
-    img = tf.image.rgb_to_grayscale(img)
-
-    # if normalization is desired
-    # img = img /255
+    img = tf.io.decode_image(img, channels=1)  # Force grayscale
+    img = tf.image.convert_image_dtype(img, tf.float32)
 
     return img
 
 
 def getDatasetFromDirectory(path, batch_size) -> tf.data.Dataset:
-    jpg_ds = tf.data.Dataset.list_files(os.path.join(path, "*/*.jpg"))
-    png_ds = tf.data.Dataset.list_files(os.path.join(path, "*/*.png"))
-    jpeg_ds = tf.data.Dataset.list_files(os.path.join(path, "*/*.jpeg"))
-
-    file_ds = jpg_ds.concatenate(png_ds).concatenate(jpeg_ds)
+        # Define file patterns and list files
+    patterns = [
+        os.path.join(path, "*.jpg"),
+        os.path.join(path, "*.jpeg"),
+        os.path.join(path, "*.JPEG"),
+        os.path.join(path, "*.png")
+    ]
+    file_ds = tf.data.Dataset.list_files(patterns, shuffle=False)
     image_ds = file_ds.map(
     imagepathToTensor,
     num_parallel_calls=tf.data.AUTOTUNE,
