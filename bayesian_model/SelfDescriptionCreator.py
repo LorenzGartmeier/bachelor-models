@@ -7,76 +7,85 @@ import tensorflow_probability as tfp
 tfd = tfp.distributions
 
 class BayesianDepthwiseConv2D(layers.Layer):
-    def __init__(self, kernel_size, prior_stddev=1.0, **kwargs):
+    def __init__(self, kernel_height, kernel_width, **kwargs):
         super().__init__(**kwargs)
-        self.kernel_size = kernel_size
-        self.prior_stddev = prior_stddev
+        self.kernel_height = kernel_height
+        self.kernel_width = kernel_width
         self.padding = kwargs.get('padding', 'same')
         
     def build(self, input_shape):
         # Input channels (last dimension of input)
-        in_channels = input_shape[-1]
+        num_kernels = input_shape[-1]
         
-        # Kernel shape: [H, W, in_channels, 1] for depthwise
-        kernel_shape = (*self.kernel_size, in_channels, 1)
+        # Kernel shape: [H, W, num_kernels, 1] for depthwise
+        # num_kernels = num kernels of previous SceneContentApproximator
+        kernel_shape = (self.kernel_height, self.kernel_width, num_kernels, 1)
+
         
-        # Create mask to zero out center weights (same as original constraint)
-        self.mask = self.create_center_mask(kernel_shape)
+        # Number of non-center elements per kernel
+        self.non_center_elements = self.kernel_height * self.kernel_width - 1
         
-        # Variational parameters (posterior)
-        self.kernel_mean = self.add_weight(
-            name='kernel_mean',
-            shape=kernel_shape,
-            initializer='glorot_uniform',
-            trainable=True
-        )
-        self.kernel_logvar = self.add_weight(
-            name='kernel_logvar',
-            shape=kernel_shape,
-            initializer=tf.constant_initializer(-10.0),  # Small initial variance
-            trainable=True
-        )
+        # Prior distribution (standard normal)
+        self.prior = tfd.Normal(loc=0., scale=1.)
         
-        # Prior distribution (zero-mean Gaussian)
-        self.prior = tfd.Independent(
-            tfd.Normal(loc=0., scale=self.prior_stddev),
-            reinterpreted_batch_ndims=4
-        )
+        # Posterior parameters (trainable)
+        self.posterior_loc = self.add_weight(
+            name='posterior_loc',
+            shape=[self.non_center_elements, num_kernels, self.num_kernels],
+            initializer='random_normal',
+            trainable=True)
         
-    def create_center_mask(self, kernel_shape):
-        k_h, k_w, num_channels, _ = kernel_shape
-        height_mid, width_mid = k_h // 2, k_w // 2
+        self.posterior_scale = self.add_weight(
+            name='posterior_scale',
+            shape=[self.non_center_elements, num_kernels, self.num_kernels],
+            initializer=tf.initializers.constant(-5.),  # Initialized for softplus(scale) ≈ 0.01
+            trainable=True)
         
-        # Create spatial mask (1 everywhere except center)
-        spatial_mask = tf.ones((k_h, k_w), dtype=tf.float32)
-        spatial_mask = tf.tensor_scatter_nd_update(
-            spatial_mask,
-            [[height_mid, width_mid]],
-            [0.0]
-        )
-        
-        # Expand dimensions for broadcasting
-        return tf.reshape(spatial_mask, (k_h, k_w, 1, 1))
     
     def call(self, inputs):
-        # Reparameterization trick
-        kernel = self.kernel_mean + tf.exp(0.5 * self.kernel_logvar) * tf.random.normal(tf.shape(self.kernel_mean))
+        # Get posterior distribution
+        posterior = tfd.Normal(loc=self.posterior_loc, 
+                               scale=tf.nn.softplus(self.posterior_scale))
         
-        # Apply center constraint
-        kernel = kernel * self.mask
+
+        v = posterior.sample()
+
+                # Reconstruct full kernels
+        kernel_shape = [self.kernel_height, self.kernel_width, 
+                        inputs.shape[-1], 1]
         
-        # Compute KL divergence: KL(q(w) || p(w))
-        posterior = tfd.Independent(
-            tfd.Normal(loc=self.kernel_mean, scale=tf.exp(0.5 * self.kernel_logvar)),
-            reinterpreted_batch_ndims=4
+        # Start with all zeros (including center)
+        kernel = tf.zeros(kernel_shape, dtype=v.dtype)
+        
+        # Create indices for non-center positions
+        h, w = self.kernel_size
+        center_i, center_j = h//2, w//2
+        indices = []
+        for i in range(h):
+            for j in range(w):
+                if (i, j) != (center_i, center_j):
+                    indices.append([i, j])
+        indices = tf.constant(indices)
+        
+        # Scatter non-center values
+        kernel = tf.tensor_scatter_nd_update(
+            kernel,
+            indices,
+            v
         )
-        kl = tf.reduce_sum(tfd.kl_divergence(posterior, self.prior))
-        self.add_loss(kl)
+        
+        # Normalize each kernel to sum to 1
+        sums = tf.reduce_sum(kernel, axis=[0, 1], keepdims=True)
+        # small constatnt to avoid division by zero
+        kernel_normalized = kernel / (sums + 1e-7)
+
+        kl_loss = tf.reduce_sum(tfd.kl_divergence(posterior, self.prior))
+        self.add_loss(kl_loss)
         
         # Perform depthwise convolution
         return tf.nn.depthwise_conv2d(
             input=inputs,
-            filter=kernel,
+            filter=kernel_normalized,
             strides=(1, 1, 1, 1),
             padding=self.padding.upper()
         )
@@ -89,7 +98,7 @@ class SelfDescriptionCreator(Model):
         
         # Replace with Bayesian convolution
         self.depthwise_conv = BayesianDepthwiseConv2D(
-            kernel_size=(kernel_height, kernel_width),
+            kernel_height, kernel_width,
             padding='same'
         )
 
@@ -170,10 +179,10 @@ class SelfDescriptionCreator(Model):
     def reset_conv_weights(self):
         # Reset Bayesian convolution parameters
         if hasattr(self.depthwise_conv, 'kernel_mean'):
-            kernel_shape = self.depthwise_conv.kernel_mean.shape
+            kernel_shape = self.depthwise_conv.posterior_loc.shape
             self.depthwise_conv.kernel_mean.assign(
                 tf.keras.initializers.GlorotUniform()(kernel_shape)
             )
-            self.depthwise_conv.kernel_logvar.assign(
+            self.depthwise_conv.posterior_scale.assign(
                 tf.constant_initializer(-10.0)(kernel_shape)  # Reset to low variance
         )

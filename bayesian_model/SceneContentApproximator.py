@@ -5,28 +5,20 @@ import numpy as np
 tfd = tfp.distributions
 
 class ConstrainedBayesianConv2D(layers.Layer):
-    def __init__(self, num_kernels, kernel_size, kernel_regularizer=None, padding='same', **kwargs):
+    def __init__(self, num_kernels, kernel_height, kernel_width, kernel_regularizer=None, padding='same', **kwargs):
         super().__init__(**kwargs)
         self.num_kernels = num_kernels
-        self.kernel_size = kernel_size
+        self.kernel_height = kernel_height
+        self.kernel_width = kernel_width
         self.padding = padding
         self.kernel_regularizer = kernel_regularizer
         
-        # Create center mask
-        h, w = kernel_size
-        self.mask = np.ones((h, w), dtype=np.float32)
-        self.mask[h//2, w//2] = 0
-        self.mask = tf.constant(self.mask)
-        
     def build(self, input_shape):
-        h, w = self.kernel_size
-        in_channels = input_shape[-1]
+        num_colorchannels = input_shape[-1]
         
-        # Create mask for broadcasting
-        self.bcast_mask = tf.reshape(self.mask, [h, w, 1, 1])
         
         # Number of non-center elements per kernel
-        self.non_center_elements = h * w - 1
+        self.non_center_elements = self.kernel_height * self.kernel_width - 1
         
         # Prior distribution (standard normal)
         self.prior = tfd.Normal(loc=0., scale=1.)
@@ -34,13 +26,13 @@ class ConstrainedBayesianConv2D(layers.Layer):
         # Posterior parameters (trainable)
         self.posterior_loc = self.add_weight(
             name='posterior_loc',
-            shape=[self.non_center_elements, in_channels, self.num_kernels],
+            shape=[self.non_center_elements, num_colorchannels, self.num_kernels],
             initializer='random_normal',
             trainable=True)
         
         self.posterior_scale = self.add_weight(
             name='posterior_scale',
-            shape=[self.non_center_elements, in_channels, self.num_kernels],
+            shape=[self.non_center_elements, num_colorchannels, self.num_kernels],
             initializer=tf.initializers.constant(-5.),  # Initialized for softplus(scale) ≈ 0.01
             trainable=True)
         
@@ -54,8 +46,8 @@ class ConstrainedBayesianConv2D(layers.Layer):
 
 
         # Reconstruct full kernels
-        kernel_shape = [self.kernel_size[0], self.kernel_size[1], 
-                        inputs.shape[-1], self.filters]
+        kernel_shape = [self.kernel_height, self.kernel_width, 
+                        inputs.shape[-1], self.num_kernels]
         
         # Start with all zeros (including center)
         kernel = tf.zeros(kernel_shape, dtype=v.dtype)
@@ -77,16 +69,11 @@ class ConstrainedBayesianConv2D(layers.Layer):
             v
         )
         
-        # Apply constraints
-        kernel_zeroed = kernel * tf.tile(
-            self.bcast_mask, 
-            [1, 1, kernel.shape[2], kernel.shape[3]]
-        )
         
         # Normalize each kernel to sum to 1
-        sums = tf.reduce_sum(kernel_zeroed, axis=[0, 1], keepdims=True)
+        sums = tf.reduce_sum(kernel, axis=[0, 1], keepdims=True)
         # small constatnt to avoid division by zero
-        kernel_normalized = kernel_zeroed / (sums + 1e-7)
+        kernel_normalized = kernel / (sums + 1e-7)
         
         # Add regularization loss if in training mode
         if training and self.kernel_regularizer is not None:
