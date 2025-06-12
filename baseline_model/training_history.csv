@@ -1,0 +1,11 @@
+recon_loss,kernel_diversity_loss,total_loss
+"tf.Tensor(136948280000.0, shape=(), dtype=float32)","tf.Tensor(-1.296076, shape=(), dtype=float32)","tf.Tensor(136948280000.0, shape=(), dtype=float32)"
+"tf.Tensor(158928910000.0, shape=(), dtype=float32)","tf.Tensor(0.11000442, shape=(), dtype=float32)","tf.Tensor(158928910000.0, shape=(), dtype=float32)"
+"tf.Tensor(184276200000.0, shape=(), dtype=float32)","tf.Tensor(0.1460366, shape=(), dtype=float32)","tf.Tensor(184276200000.0, shape=(), dtype=float32)"
+"tf.Tensor(220718250000.0, shape=(), dtype=float32)","tf.Tensor(0.038333293, shape=(), dtype=float32)","tf.Tensor(220718250000.0, shape=(), dtype=float32)"
+"tf.Tensor(265594900000.0, shape=(), dtype=float32)","tf.Tensor(-0.28687036, shape=(), dtype=float32)","tf.Tensor(265594900000.0, shape=(), dtype=float32)"
+"tf.Tensor(309804100000.0, shape=(), dtype=float32)","tf.Tensor(-0.6545369, shape=(), dtype=float32)","tf.Tensor(309804100000.0, shape=(), dtype=float32)"
+"tf.Tensor(354490300000.0, shape=(), dtype=float32)","tf.Tensor(-0.9954483, shape=(), dtype=float32)","tf.Tensor(354490300000.0, shape=(), dtype=float32)"
+"tf.Tensor(406117500000.0, shape=(), dtype=float32)","tf.Tensor(-1.2998786, shape=(), dtype=float32)","tf.Tensor(406117500000.0, shape=(), dtype=float32)"
+"tf.Tensor(465790440000.0, shape=(), dtype=float32)","tf.Tensor(-1.5794442, shape=(), dtype=float32)","tf.Tensor(465790440000.0, shape=(), dtype=float32)"
+"tf.Tensor(536825430000.0, shape=(), dtype=float32)","tf.Tensor(-1.8414185, shape=(), dtype=float32)","tf.Tensor(536825430000.0, shape=(), dtype=float32)"

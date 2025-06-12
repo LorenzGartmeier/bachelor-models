@@ -49,24 +49,22 @@ class SceneContentApproximator(Model):
             # y_true.shape (batch_size, resize_height, resize_width, num_kernels)
 
             # y_true gets broadcasted (num_colorchannels = 1 required)
-            discrepancy_loss =  math.reduce_sum(math.square(y_true - y_pred))
-            return discrepancy_loss
+            return  math.reduce_sum(math.square(y_true - y_pred))
                                                 
         optimizer = keras.optimizers.AdamW(self.learning_rate)
 
-        @tf.function
         def train_step(image_batch):
             with tf.GradientTape() as tape:
 
                 # shape: ()
                 prediction = self(image_batch, training=True)
 
-                custom_loss = custom_loss(image_batch, prediction)
+                recon_loss = custom_loss(image_batch, prediction)
                 diversity_loss = self.losses[0]  # KernelDiversityLoss
 
                 # single value
-                total_loss = custom_loss + diversity_loss
-            
+                total_loss = recon_loss + diversity_loss
+
             # Get gradients and update weights
             gradients = tape.gradient(total_loss, self.trainable_variables)
             # Check if any gradient is None
@@ -74,22 +72,22 @@ class SceneContentApproximator(Model):
                 tf.print("Warning: One or more gradients are None.")
             optimizer.apply_gradients(zip(gradients, self.trainable_variables))
 
-            return total_loss, custom_loss, diversity_loss
+            return total_loss, recon_loss, diversity_loss
 
 
         
         for i in range (epochs):
             tf.print("Epoch: ", i)
-            epoch_custom_loss = 0.0
+            epoch_recon_loss = 0.0
             epoch_kernel_diversity_loss = 0.0
             epoch_total_loss = 0.0
             for image_batch in dataset:
-                total_loss, custom_loss, diversity_loss = train_step(image_batch)
-                epoch_custom_loss += custom_loss
+                total_loss, recon_loss, diversity_loss = train_step(image_batch)
+                epoch_recon_loss += recon_loss
                 epoch_kernel_diversity_loss += diversity_loss
                 epoch_total_loss += total_loss
 
-            history['recon_loss'].append(epoch_custom_loss / num_batches)
+            history['recon_loss'].append(epoch_recon_loss / num_batches)
             history['kernel_diversity_loss'].append(epoch_kernel_diversity_loss / num_batches)
             history['total_loss'].append(epoch_total_loss / num_batches)
 
@@ -128,7 +126,7 @@ class KernelConstraint(keras.constraints.Constraint):
         sum_per_kernel = tf.reduce_sum(w_zeroed, axis=[0, 1, 2], keepdims=True)
 
         # Normalize each kernel to sum to 1
-        return w_zeroed /  sum_per_kernel + self.epsilon * tf.sign(sum_per_kernel)
+        return w_zeroed / (tf.abs(sum_per_kernel) + 1e-6)
 
 
 class KernelDiversityLoss(keras.regularizers.Regularizer):
@@ -148,7 +146,15 @@ class KernelDiversityLoss(keras.regularizers.Regularizer):
             # shape (num_kernels, kernel_height * kernel_width)
             flattened_kernels = tf.transpose(tf.squeeze(tf.reshape(kernel_tensor, [1, self.kernel_height * self.kernel_width, self.num_kernels])))
 
+            # Add small regularization to avoid singular matrices
+            eps = 1e-8
+            regularized_kernels = flattened_kernels + eps * tf.eye(tf.shape(flattened_kernels)[0], tf.shape(flattened_kernels)[1])
 
-
-            singular_values = tf.linalg.svd(flattened_kernels, compute_uv=False)
-            return - self.loss_constant_lambda * tf.reduce_sum(math.log(singular_values + self.loss_constant_alpha))
+            try:
+                singular_values = tf.linalg.svd(regularized_kernels, compute_uv=False)
+                # Clamp singular values to avoid log(0)
+                singular_values = tf.maximum(singular_values, eps)
+                return - self.loss_constant_lambda * tf.reduce_sum(math.log(singular_values + self.loss_constant_alpha))
+            except tf.errors.InvalidArgumentError:
+                # Fallback: return a small penalty if SVD fails
+                return tf.constant(0.1, dtype=tf.float32)
