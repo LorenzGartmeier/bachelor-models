@@ -1,41 +1,52 @@
-import tensorflow as tf
-import tensorflow_probability as tfp
 import numpy as np
+import tensorflow as tf
+from tensorflow_probability import distributions as tfd
 
-tfd = tfp.distributions
-
-
-class GMM:
-    def __init__(self, num_components, selfdescription_lengh):
+class GMM(tf.Module):
+    def __init__(self, num_components: int, vec_len: int):
+        super().__init__()
         self.num_components = num_components
-        self.locs = tf.Variable(tf.random.normal([num_components, selfdescription_lengh]))
-        self.scale_diag_raw = tf.Variable(tf.random.normal([num_components, selfdescription_lengh]))
-        self.mix_probs_raw = tf.Variable(tf.random.normal([num_components]))
+        self.vec_len        = vec_len          # <— store for save/load
 
-    def fit(self, dataset, epochs, learning_rate=0.1):
-        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        # parameters
+        self.locs      = tf.Variable(tf.random.normal([num_components, vec_len]))
+        self.scale_raw = tf.Variable(tf.random.normal([num_components, vec_len]))
+        self.mix_raw   = tf.Variable(tf.random.normal([num_components]))
 
-        for epoch in range(epochs):
-            for batch in dataset:
+    # helper that always applies σ-floor
+    def _dist(self):
+        scale = tf.nn.softplus(self.scale_raw) + 1e-4
+        mix   = tf.nn.softmax(self.mix_raw)
+        return tfd.MixtureSameFamily(
+            tfd.Categorical(probs=mix),
+            tfd.MultivariateNormalDiag(loc=self.locs, scale_diag=scale))
 
-                # Perform one step of optimization
+    def fit(self, ds, epochs, lr=1e-2, clip=10.0):
+        opt = tf.keras.optimizers.Adam(lr)
+        for _ in range(epochs):
+            for batch in ds:
                 with tf.GradientTape() as tape:
-                    scale_diag = tf.nn.softplus(self.scale_diag_raw)
-                    mix_probs = tf.nn.softmax(self.mix_probs_raw)
-                    gmm = tfd.MixtureSameFamily(
-                        mixture_distribution=tfd.Categorical(probs=mix_probs),
-                        components_distribution=tfd.MultivariateNormalDiag(loc=self.locs, scale_diag=scale_diag),
-                    )
-                    loss = -tf.reduce_mean(gmm.log_prob(batch))
-                grads = tape.gradient(loss, [self.locs, self.scale_diag_raw, self.mix_probs_raw])
-                optimizer.apply_gradients(zip(grads, [self.locs, self.scale_diag_raw, self.mix_probs_raw]))
+                    loss = -tf.reduce_mean(self._dist().log_prob(batch))
+                g = tape.gradient(loss, self.trainable_variables)
+                g, _ = tf.clip_by_global_norm(g, clip)
+                opt.apply_gradients(zip(g, self.trainable_variables))
 
+    def log_prob(self, x):  return self._dist().log_prob(x)
+    def prob    (self, x):  return tf.exp(self.log_prob(x))
 
-    def get_prob(self, batch):
-        scale_diag = tf.nn.softplus(self.scale_diag_raw)
-        mix_probs = tf.nn.softmax(self.mix_probs_raw)
-        gmm = tfd.MixtureSameFamily(
-            mixture_distribution=tfd.Categorical(probs=mix_probs),
-            components_distribution=tfd.MultivariateNormalDiag(loc=self.locs, scale_diag=scale_diag),
-        )
-        return gmm.prob(batch)
+    def save(self, path):
+        np.savez(path,
+                 locs=self.locs.numpy(),
+                 scale_raw=self.scale_raw.numpy(),
+                 mix_raw=self.mix_raw.numpy(),
+                 num_components=self.num_components,
+                 vec_len=self.vec_len)
+
+    @classmethod
+    def load(cls, path):
+        d = np.load(path)
+        obj = cls(int(d['num_components']), int(d['vec_len']))
+        obj.locs     .assign(d['locs'])
+        obj.scale_raw.assign(d['scale_raw'])
+        obj.mix_raw  .assign(d['mix_raw'])
+        return obj
