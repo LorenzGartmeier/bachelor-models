@@ -7,13 +7,14 @@ class Attributor:
         self.n_components          = n_components
         self.gmm_dict: dict[int, GMM] = {}
 
+    # returns loss history
     def add_gmm(self, label: int, dataset, epochs=10, lr=1e-2):
 
         for batch in dataset.take(1):
             selfdescription_length = batch.shape[-1]
         gmm = self.gmm_dict.setdefault(
                   label, GMM(self.n_components, selfdescription_length))
-        gmm.fit(dataset, epochs=epochs, lr=lr)
+        return gmm.fit(dataset, epochs=epochs, lr=lr)
 
     def predict(self, batch, tau: float):
         x = tf.convert_to_tensor(batch, tf.float32)

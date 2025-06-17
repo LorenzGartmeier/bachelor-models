@@ -23,13 +23,22 @@ class GMM(tf.Module):
 
     def fit(self, ds, epochs, lr=1e-2, clip=10.0):
         opt = tf.keras.optimizers.Adam(lr)
+        history = {
+            'loss': [],
+        }
+
         for _ in range(epochs):
+            epoch_loss = 0.0
             for batch in ds:
                 with tf.GradientTape() as tape:
                     loss = -tf.reduce_mean(self._dist().log_prob(batch))
                 g = tape.gradient(loss, self.trainable_variables)
                 g, _ = tf.clip_by_global_norm(g, clip)
                 opt.apply_gradients(zip(g, self.trainable_variables))
+                epoch_loss += loss
+            epoch_loss /= tf.data.experimental.cardinality(ds).numpy()
+            history['loss'].append(epoch_loss.numpy())
+        return history
 
     def log_prob(self, x):  return self._dist().log_prob(x)
     def prob    (self, x):  return tf.exp(self.log_prob(x))
