@@ -2,6 +2,10 @@ import os
 import shutil
 import random
 import argparse
+import os
+import random
+import shutil
+
 
 def is_image(filename):
     exts = ('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp')
@@ -46,5 +50,58 @@ def main():
     flatten_folder(root)
     #reduce_images(root, keep)
 
+def split_images_into_train_test(data_dir, ratio):
+    # Validate the ratio
+    if ratio < 0 or ratio > 1:
+        raise ValueError("Ratio must be between 0 and 1")
+    
+    # Supported image extensions
+    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.npy']
+    
+    # List all files in the directory
+    all_files = os.listdir(data_dir)
+    image_files = []
+    for f in all_files:
+        full_path = os.path.join(data_dir, f)
+        if os.path.isfile(full_path):
+            ext = os.path.splitext(f)[1].lower()
+            if ext in image_extensions:
+                image_files.append(f)
+    
+    total_images = len(image_files)
+    if total_images == 0:
+        print("No images found in the directory.")
+        return
+    
+    # Shuffle the list of images
+    random.shuffle(image_files)
+    
+    # Calculate the number of images for training using rounding
+    n_train = int(ratio * total_images + 0.5)
+    n_test = total_images - n_train
+    
+    # Create train and test directories
+    train_dir = os.path.join(data_dir, 'train')
+    test_dir = os.path.join(data_dir, 'test')
+    os.makedirs(train_dir, exist_ok=True)
+    os.makedirs(test_dir, exist_ok=True)
+    
+    # Move images to train directory
+    for i in range(n_train):
+        src_path = os.path.join(data_dir, image_files[i])
+        dst_path = os.path.join(train_dir, image_files[i])
+        shutil.move(src_path, dst_path)
+    
+    # Move images to test directory
+    for i in range(n_train, total_images):
+        src_path = os.path.join(data_dir, image_files[i])
+        dst_path = os.path.join(test_dir, image_files[i])
+        shutil.move(src_path, dst_path)
+    
+    print(f"Split completed: {n_train} images in 'train', {n_test} images in 'test'.")
+
 if __name__ == "__main__":
-    main()
+    for folder in os.listdir('baseline_model/self_descriptions/OSMA'):
+        if os.path.isdir(os.path.join('baseline_model/self_descriptions/OSMA', folder)):
+            dataset_path = os.path.join('baseline_model/self_descriptions/OSMA', folder)
+            split_images_into_train_test(dataset_path, 0.8)
