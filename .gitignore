@@ -178,3 +178,7 @@ datasets/
 
 *.h5
 *.keras
+*.npy
+
+results/
+saved_weights/
