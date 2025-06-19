@@ -1,4 +1,10 @@
-from bayesian_model.source.GMMrce.GMMrce.GMM import GMM
+import sys
+import os
+
+project_root = os.environ.get('BACHELOR_MODELS_ROOT', '.')
+sys.path.append(project_root)
+
+from bayesian_model.source.GMM import GMM
 import numpy as np
 import tensorflow as tf
 import scipy.stats
