@@ -1,4 +1,4 @@
-from bayesian_model.GMM import GMM
+from bayesian_model.source.GMMrce.GMMrce.GMM import GMM
 import numpy as np
 import tensorflow as tf
 import scipy.stats
