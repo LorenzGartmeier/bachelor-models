@@ -158,7 +158,6 @@ class KernelDiversityLoss(keras.regularizers.Regularizer):
 
 
     def __call__(self, kernel_tensor):
-            # shape: (1, kernel_height, kernel_width, num_kernels)
 
             # shape (num_kernels, kernel_height * kernel_width)
             flattened_kernels = tf.squeeze(tf.reshape(kernel_tensor, [1, self.kernel_height * self.kernel_width, self.num_kernels]))
