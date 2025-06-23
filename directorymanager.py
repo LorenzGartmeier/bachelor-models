@@ -100,8 +100,21 @@ def split_images_into_train_test(data_dir, ratio):
     
     print(f"Split completed: {n_train} images in 'train', {n_test} images in 'test'.")
 
+def rm_non_images(root):
+    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.npy','JPEG', 'JPG']
+    for file in os.listdir(root):
+        ext = os.path.splitext(file)[1].lower()
+        if ext not in image_extensions:
+            os.remove(file)
+
+ 
+        
+
+
+
 if __name__ == "__main__":
-    for folder in os.listdir('baseline_model/self_descriptions/OSMA'):
-        if os.path.isdir(os.path.join('baseline_model/self_descriptions/OSMA', folder)):
-            dataset_path = os.path.join('baseline_model/self_descriptions/OSMA', folder)
-            split_images_into_train_test(dataset_path, 0.8)
+    for folder in os.listdir('datasets'):
+        print(folder)
+        path = os.path.join('datasets', folder)
+        flatten_folder(path)
+        rm_non_images(path)
