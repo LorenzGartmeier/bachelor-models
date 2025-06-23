@@ -37,45 +37,43 @@ class Attributor:
         for label in meta['labels']:
             atr.gmm_dict[int(label)] = GMM.load(f"{base_path}_{label}.npz")
         return atr
-
-
-
-
-
-
-    def predict(
-        self,
-        sample_list,                   # list length N, each (B, vec_len)
-        tau_prob: float = 0.55,        # low max-probability  → unknown
-        tau_unc:  float = math.log(10) # high entropy (nats) → unknown
-    ):
-
-        x = tf.convert_to_tensor(np.stack(sample_list, axis=1), tf.float32)  
-        B, N, V = x.shape
-        x_flat  = tf.reshape(x, [-1, V])                                   
-
-        class_keys = sorted(self.gmm_dict.keys())     
-        logp_flat  = tf.stack(
-            [self.gmm_dict[k].log_prob(x_flat) for k in class_keys], axis=-1
-        )                                              
-        C = logp_flat.shape[-1]
-        logp = tf.reshape(logp_flat, [B, N, C])        # (B,N,C)
-
-        m        = tf.reduce_max(logp, axis=1, keepdims=True)
-        log_marg = tf.squeeze(
-            m + tf.math.log(tf.reduce_mean(tf.exp(logp - m), axis=1))
-        )                                              # (B,C)
-
-        probs   = tf.nn.softmax(log_marg, axis=-1)     # (B,C)
-        entropy = -tf.reduce_sum(
-            probs * tf.math.log(probs + 1e-8), axis=-1
-        )                                              # (B,)
-
-        best_prob = tf.reduce_max(probs, axis=-1)      # (B,)
-        best_idx  = tf.argmax(probs, axis=-1, output_type=tf.int32)
-        best_lbl  = tf.gather(class_keys, best_idx)    # (B,)
-
-        unknown  = tf.logical_or(best_prob < tau_prob, entropy > tau_unc)
-        best_lbl = tf.where(unknown, -1, best_lbl)
-
-        return best_lbl.numpy(), entropy.numpy()
+    
+    def predict(self, list_of_batches, tau):
+        if not list_of_batches:
+            return tf.constant([], dtype=tf.int64), tf.constant([], dtype=tf.float32)
+        
+        batch_size = tf.shape(list_of_batches[0])[0]
+        num_classes = len(self.gmm_dict)
+        n_samples = len(list_of_batches)
+        
+        log_likelihoods = []
+        sorted_classes = sorted(self.gmm_dict.keys())
+        
+        for c in sorted_classes:
+            gmm = self.gmm_dict[c]
+            sample_log_probs = []  
+            
+            for batch in list_of_batches:
+                log_prob = gmm.log_prob(batch)
+                sample_log_probs.append(log_prob)
+            
+            sample_log_probs = tf.stack(sample_log_probs, axis=0)
+            
+            avg_log_prob = tf.reduce_logsumexp(sample_log_probs, axis=0) - tf.math.log(tf.cast(n_samples, tf.float32))
+            log_likelihoods.append(avg_log_prob)
+        
+        log_likelihood_matrix = tf.stack(log_likelihoods, axis=1)
+        
+        posterior = tf.nn.softmax(log_likelihood_matrix, axis=1)
+        
+        predicted_labels = tf.argmax(posterior, axis=1, output_type=tf.int64) 
+        
+        entropy = -tf.reduce_sum(posterior * tf.math.log(posterior + 1e-12), axis=1)
+        
+        final_labels = tf.where(
+            entropy > tau,
+            -tf.ones_like(predicted_labels, dtype=tf.int64),
+            predicted_labels
+        )
+        
+        return final_labels, entropy
