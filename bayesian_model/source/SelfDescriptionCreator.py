@@ -7,23 +7,22 @@ import tensorflow_probability as tfp
 tfd = tfp.distributions
 
 class BayesianDepthwiseConv2D(layers.Layer):
-    def __init__(self, kernel_height, kernel_width, **kwargs):
+    def __init__(self, kernel_height, kernel_width, num_kernels, **kwargs):
         super().__init__(**kwargs)
         self.kernel_height = kernel_height
         self.kernel_width = kernel_width
-        self.padding = kwargs.get('padding', 'same')
+        self.num_kernels = num_kernels
         
-    def build(self, input_shape):
-        # Input channels (last dimension of input)
-        num_kernels = input_shape[-1]
+    def build(self):
         
-        # Kernel shape: [H, W, num_kernels, 1] for depthwise
-        # num_kernels = num kernels of previous SceneContentApproximator
-        kernel_shape = (self.kernel_height, self.kernel_width, num_kernels, 1)
+
 
         
         # Number of non-center elements per kernel
         self.non_center_elements = self.kernel_height * self.kernel_width - 1
+        self.kernel_shape = [self.kernel_height, self.kernel_width, 
+                             self.num_kernels, 1]
+
         
         # Prior distribution (standard normal)
         self.prior = tfd.Normal(loc=0., scale=1.)
@@ -31,17 +30,22 @@ class BayesianDepthwiseConv2D(layers.Layer):
         # Posterior parameters (trainable)
         self.posterior_loc = self.add_weight(
             name='posterior_loc',
-            shape=kernel_shape,
+            shape=[self.non_center_elements * self.num_kernels],
             initializer='random_normal',
             trainable=True)
         
         self.posterior_scale = self.add_weight(
             name='posterior_scale',
-            shape=kernel_shape,
+            shape=[self.non_center_elements * self.num_kernels],
             initializer=tf.initializers.constant(-5.),  # Initialized for softplus(scale) ≈ 0.01
             trainable=True)
-        
-    
+
+        mask = np.ones(self.kernel_shape, np.float32)
+        mask[self.kernel_height//2, self.kernel_width//2, :, :] = 0.
+        mask = tf.constant(mask)
+        self.indices = tf.where(mask)
+
+
     def call(self, inputs):
         # Get posterior distribution
         posterior = tfd.Normal(loc=self.posterior_loc, 
@@ -49,28 +53,16 @@ class BayesianDepthwiseConv2D(layers.Layer):
         
 
         v = posterior.sample()
-
-                # Reconstruct full kernels
-        kernel_shape = [self.kernel_height, self.kernel_width, 
-                        inputs.shape[-1], 1]
         
         # Start with all zeros (including center)
-        kernel = tf.zeros(kernel_shape, dtype=v.dtype)
+        kernel = tf.zeros(self.kernel_shape, dtype=v.dtype)
         
-        # Create indices for non-center positions
-        h, w = self.kernel_size
-        center_i, center_j = h//2, w//2
-        indices = []
-        for i in range(h):
-            for j in range(w):
-                if (i, j) != (center_i, center_j):
-                    indices.append([i, j])
-        indices = tf.constant(indices)
+        
         
         # Scatter non-center values
         kernel = tf.tensor_scatter_nd_update(
             kernel,
-            indices,
+            self.indices,
             v
         )
         
@@ -87,20 +79,24 @@ class BayesianDepthwiseConv2D(layers.Layer):
             input=inputs,
             filter=kernel_normalized,
             strides=(1, 1, 1, 1),
-            padding=self.padding.upper()
+            padding="SAME"
         )
 
 class SelfDescriptionCreator(Model):
-    def __init__(self, kernel_height, kernel_width, L, learning_rate):
+    def __init__(self, kernel_height, kernel_width, num_kernels, L, learning_rate):
         super(SelfDescriptionCreator, self).__init__()
         self.L = L
         self.learning_rate = learning_rate
         
         # Replace with Bayesian convolution
         self.depthwise_conv = BayesianDepthwiseConv2D(
-            kernel_height, kernel_width,
-            padding='same'
+            kernel_height, kernel_width, num_kernels
         )
+
+        self.depthwise_conv.build()
+
+        self.optimizer = keras.optimizers.AdamW(self.learning_rate)
+
 
     def call(self, inputs):
         # Input shape: (1, image_height, image_width, num_kernels)
@@ -117,7 +113,7 @@ class SelfDescriptionCreator(Model):
                 inputs,
                 target_size,
                 method='bilinear',
-                antialias=True
+                antialias=False
             )
             
             r_hat = self.depthwise_conv(downsampled)
@@ -134,55 +130,43 @@ class SelfDescriptionCreator(Model):
             total_error += tf.reduce_sum(upsampled_error, axis=-1)
 
         # 5. Compute final loss (mean squared error)
-        loss = tf.reduce_mean(tf.reduce_sum(tf.square(total_error), axis=[1, 2]))
+        loss = tf.reduce_mean(tf.reduce_mean(tf.square(total_error), axis=[1, 2]))
         self.add_loss(loss)
         
         return inputs  # Maintain Keras functional API
 
     
+
+
+    @tf.function(reduce_retracing=True, jit_compile=True)
+    def train_step(self, residual_batch):
+        with tf.GradientTape() as tape:
+            _ = self(residual_batch, training=True)          
+            loss = tf.add_n(self.losses)          
+        grads = tape.gradient(loss, self.trainable_variables)
+        grads, _ = tf.clip_by_global_norm(grads, 10.0)
+        self.optimizer.apply_gradients(zip(grads, self.trainable_variables))
+
+
     # expects a batch with shape (1, image_height, image_width, num_kernels)
-    def train(self, image_batch, epochs):
-                                                
-        optimizer = keras.optimizers.AdamW(self.learning_rate)
-
-        @tf.function
-        def train_step(image_batch):
-            with tf.GradientTape() as tape:
-
-                # ignore prediction
-                _ = self(image_batch, training=True)
-
-                # single value
-                loss = tf.add_n(self.losses)
-            
-            # Get gradients and update weights
-            gradients = tape.gradient(loss, self.trainable_variables)
-            optimizer.apply_gradients(zip(gradients, self.trainable_variables))
-        
+    def train(self, image_batch, epochs):                                  
         for _ in range (epochs):
-            train_step(image_batch)
+            self.train_step(image_batch)
 
     def train_and_get(self, image_batch, epochs):
         self.reset_conv_weights()
         residual_list = tf.unstack(image_batch)
         residual_list = [tf.expand_dims(x, axis=0) for x in residual_list]
         selfdescriptions_list = []
-        i = 0
         for image in residual_list:
             self.train(image, epochs)
-            weights = self.get_weights()[0]
-            flattened_weights = tf.reshape(weights, [-1])
-            selfdescriptions_list.append(flattened_weights)
+            locs = tf.reshape(self.depthwise_conv.posterior_loc, [-1])
+            scales = tf.reshape(tf.nn.softplus(self.depthwise_conv.posterior_scale), [-1])
+            sefldescription = tf.concat([locs, scales], axis=0)
+            selfdescriptions_list.append(sefldescription)
 
         return tf.stack(selfdescriptions_list)
 
     def reset_conv_weights(self):
-        # Reset Bayesian convolution parameters
-        if hasattr(self.depthwise_conv, 'kernel_mean'):
-            kernel_shape = self.depthwise_conv.posterior_loc.shape
-            self.depthwise_conv.kernel_mean.assign(
-                tf.keras.initializers.GlorotUniform()(kernel_shape)
-            )
-            self.depthwise_conv.posterior_scale.assign(
-                tf.constant_initializer(-10.0)(kernel_shape)  # Reset to low variance
-        )
+        self.depthwise_conv.posterior_loc.assign(tf.random.normal(self.depthwise_conv.posterior_loc.shape))
+        self.depthwise_conv.posterior_scale.assign(tf.constant(-5.0, shape=self.depthwise_conv.posterior_scale.shape))
