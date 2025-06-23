@@ -29,7 +29,7 @@ class SelfDescriptionCreator(Model):
             depthwise_constraint=self.kernel_constraint,
         )
 
-    
+    @tf.function(jit_compile=True)
     def _forward(self, x):
         B, H, W, _ = x[0].shape
         total = tf.zeros([B, H, W], x[0].dtype)
@@ -39,7 +39,7 @@ class SelfDescriptionCreator(Model):
                          tf.image.resize(e, (H, W), "bilinear"), axis=-1)
         return total                                    # H×W error
 
-    @tf.function
+    @tf.function(jit_compile=True)
     def train_step(self, x):
         with tf.GradientTape() as tape:
             err  = self._forward(x)
@@ -50,7 +50,6 @@ class SelfDescriptionCreator(Model):
         g, _ = tf.clip_by_global_norm(g, 10.0)
         self.optimizer.apply_gradients(zip(g, self.trainable_variables))
         return loss
-
     
     # expects a batch with shape (1, image_height, image_width, num_kernels)
     def train(self, image, epochs):
@@ -65,7 +64,6 @@ class SelfDescriptionCreator(Model):
             loss = self.train_step(resized_list)
 
         return loss
-
 
     # expects batches from the SceneContentApproximator of shape (batch_size, image_height, image_width, num_kernels)
     # returns a tensor of shape (batch_size, num_weights) and a tensor of shape (batch_size,1) for the losses
