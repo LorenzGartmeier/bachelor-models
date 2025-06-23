@@ -5,8 +5,8 @@ import os
 import keras
 import numpy as np
 from keras import Model, layers
-from dataloading.loadResized import getDatasetFromDirectory
-from baseline_model.SceneContentApproximator import SceneContentApproximator
+from dataloading.loadCropped import getDatasetFromDirectory
+from baseline_model.source.SceneContentApproximator import SceneContentApproximator
 
 resize_height, resize_width = 256, 256
 
@@ -26,9 +26,9 @@ loss_constant_lambda = 1.0
 
 
 
-dataset = getDatasetFromDirectory(os.path.join('datasets', 'train2017'), 32)
+dataset = getDatasetFromDirectory(os.path.join('datasets', 'coco2017'), 32)
 
-dataset = dataset.take(512)
+dataset = dataset.take(32)
 
 # batches obtained with iterator.next() have shape (batch_size, image_height, image_width, num_colorchannels)
 iterator = dataset.as_numpy_iterator()
@@ -48,7 +48,7 @@ batch = iterator.next()
 image = np.squeeze(batch[0])
 
 sceneContentApproximator = SceneContentApproximator(num_kernels, kernel_height, kernel_width, learning_rate, loss_constant_alpha, loss_constant_lambda)
-sceneContentApproximator.train(dataset, 10)
+sceneContentApproximator.train(dataset,3)
 
 prediction_batch = sceneContentApproximator(batch)
 
@@ -64,6 +64,7 @@ sums = tf.reduce_sum(weights, axis=[0, 1, 2])
 fig, ax = plt.subplots(nrows = num_kernels, ncols = 4, figsize=(20, 20))
 for i in range(num_kernels):
     kernel = np.squeeze(weights[:,:,:,i]) 
+    print(kernel)
     # kernel /= max(abs(weights_min), abs(weights_max))
     approximated_image = np.squeeze(prediction_batch[0, :, :, i])
     residual = image - approximated_image
