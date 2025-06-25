@@ -94,7 +94,8 @@ class SelfDescriptionCreator(Model):
             tensor_list = tensor_list.write(i, residual)
 
         selfdescriptions_list = tf.TensorArray(dtype = tf.float32, size = batch_size, element_shape=tf.TensorShape([self.kernel_height * self.kernel_width * self.num_kernels]))
-        
+        loss_list = tf.TensorArray(dtype = tf.float32, size = batch_size)
+
         i = tf.constant(0)
         while i < batch_size:
             self.reset_conv_weights()
@@ -103,9 +104,10 @@ class SelfDescriptionCreator(Model):
             loss = self.train(image, height, width, epochs)
             flattened_weights = tf.reshape(self.depthwise_conv.kernel, [-1])
             selfdescriptions_list = selfdescriptions_list.write(i, flattened_weights)
+            loss_list = loss_list.write(i, loss)
             i += 1
 
-        return selfdescriptions_list.stack()
+        return selfdescriptions_list.stack(), loss_list.stack()
     
     def reset_conv_weights(self):
         for v in self.depthwise_conv.weights:
