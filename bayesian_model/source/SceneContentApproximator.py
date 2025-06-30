@@ -66,8 +66,10 @@ class ConstrainedBayesianConv2D(layers.Layer):
         mask = tf.constant(mask)
         self.indices = tf.where(mask)
         
-    @tf.function
-    def call(self, inputs, training=None):
+    @tf.function(
+    input_signature=[tf.TensorSpec(shape=(1, None, None, 1), dtype=tf.float32)]
+    )
+    def call(self, image_batch, training=None):
         # Get posterior distribution
         posterior = tfd.Normal(loc=self.posterior_loc, 
                                scale=tf.nn.softplus(self.posterior_scale))
@@ -103,7 +105,7 @@ class ConstrainedBayesianConv2D(layers.Layer):
         
 
         return tf.nn.conv2d(
-            inputs,
+            image_batch,
             kernel_normalized,
             strides=[1, 1, 1, 1],
             padding=self.padding.upper()
@@ -151,8 +153,12 @@ class SceneContentApproximator(Model):
         )
         return cfg
         
-    def call(self, inputs, training=None):
-        return self.conv(inputs, training=training)
+
+    @tf.function(
+    input_signature=[tf.TensorSpec(shape=(1, None, None, 1), dtype=tf.float32)]
+    )
+    def call(self, image_batch, training=None):
+        return self.conv(image_batch, training=training)
 
     # Training method remains similar to original
     def train(self, dataset, epochs):
@@ -161,7 +167,9 @@ class SceneContentApproximator(Model):
 
         kl_factor = 1 / tf.data.experimental.cardinality(dataset).numpy()
 
-        @tf.function
+        @tf.function(
+        input_signature=[tf.TensorSpec(shape=(1, None, None, 1), dtype=tf.float32)]
+        )
         def train_step(image_batch):
             with tf.GradientTape() as tape:
                 prediction = self(image_batch, training=True)
