@@ -32,9 +32,9 @@ class ConstrainedBayesianConv2D(layers.Layer):
             cfg['kernel_regularizer'])
         return cls(**cfg)
         
-    def build(self):
-        
-        
+    def build(self, input_shape):
+        super().build(input_shape)
+
         # Number of non-center elements per kernel
         self.non_center_elements = self.kernel_height * self.kernel_width - 1
         
@@ -139,7 +139,7 @@ class SceneContentApproximator(Model):
             padding='same'
         )
 
-        self.conv.build()  
+        self.conv.build(input_shape=(None, None, None, self.num_kernels))
 
     def get_config(self):
         cfg = super().get_config()
@@ -162,21 +162,21 @@ class SceneContentApproximator(Model):
         
 
         kl_factor = 1 / tf.data.experimental.cardinality(dataset).numpy()
-        print("KL factor:", kl_factor)
+
         @tf.function
         def train_step(image_batch):
             with tf.GradientTape() as tape:
                 prediction = self(image_batch, training=True)
                 
                 # Reconstruction loss
-                recon_loss = tf.reduce_mean(tf.square(image_batch - prediction))
+                recon_loss = tf.reduce_sum(tf.square(image_batch - prediction))
                 
 
                 kernelDiversityLoss = self.losses[0]
 
                 kl_loss = self.losses[1] * kl_factor 
                 # Total loss = reconstruction + KL + regularization
-                total_loss = kl_loss # recon_loss + kernelDiversityLoss + kl_loss
+                total_loss = recon_loss + kernelDiversityLoss + kl_loss
 
             gradients = tape.gradient(total_loss, self.trainable_variables)
             optimizer.apply_gradients(zip(gradients, self.trainable_variables))
