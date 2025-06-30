@@ -31,4 +31,6 @@ def getDatasetFromDirectory(path, batch_size) -> tf.data.Dataset:
         padding_values=0.0
     )
 
+    padded_ds = padded_ds.prefetch(tf.data.AUTOTUNE) 
+
     return padded_ds
