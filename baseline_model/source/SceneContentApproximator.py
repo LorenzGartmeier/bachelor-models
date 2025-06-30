@@ -24,7 +24,7 @@ class SceneContentApproximator(Model):
                                     num_kernels, 
                                     (kernel_height,kernel_width),
                                     use_bias= False, 
-                                    kernel_initializer= keras.initializers.RandomNormal(mean = 1 / (kernel_height * kernel_width), stddev=0.1),
+                                    kernel_initializer= keras.initializers.RandomNormal(mean = 1 / (kernel_height * kernel_width), stddev=0.01),
                                     kernel_regularizer = KernelDiversityLoss(loss_constant_alpha, loss_constant_lambda, num_kernels, kernel_height, kernel_width),
                                     kernel_constraint = KernelConstraint((kernel_height, kernel_width, 1, num_kernels)), # num_colorchannels = 1 for grayscaled images
                                     padding='same' # to let the output of the layer have the same size as the input
@@ -36,13 +36,11 @@ class SceneContentApproximator(Model):
     # expects grayscaled images (num_colorchannels = 1)
     def train(self, dataset, epochs):
 
-        num_batches = tf.data.experimental.cardinality(dataset).numpy()
 
 
         history = {
             'recon_loss': [],
             'kernel_diversity_loss': [],
-            'l2_loss': [],
             'total_loss': []
         }
 
@@ -51,7 +49,7 @@ class SceneContentApproximator(Model):
         for _ in range(self.kernel_height * self.kernel_width * self.num_kernels):
             kernel_history.append([])
 
-        for _ in range(math.minimum(self.kernel_height * self.kernel_width, self.num_kernels)):
+        for _ in range(np.minimum(self.kernel_height * self.kernel_width, self.num_kernels)):
             singular_values_history.append([])
 
         def custom_loss(y_true, y_pred):
@@ -59,9 +57,9 @@ class SceneContentApproximator(Model):
             # y_true.shape (batch_size, resize_height, resize_width, num_kernels)
 
             # y_true gets broadcasted (num_colorchannels = 1 required)
-            return tf.reduce_mean(tf.square(y_true - y_pred))
+            return tf.reduce_sum(tf.square(y_true - y_pred))
                                                 
-        optimizer = keras.optimizers.AdamW(self.learning_rate, weight_decay=0.003) 
+        optimizer = keras.optimizers.AdamW(self.learning_rate) 
 
         def train_step(image_batch):
             with tf.GradientTape() as tape:
@@ -69,16 +67,16 @@ class SceneContentApproximator(Model):
                 prediction = self(image_batch, training=True)
 
                 recon_loss = custom_loss(image_batch, prediction)
-                diversity_loss, l2_loss,  singular_values = self.losses[0]
+                diversity_loss = self.losses[0]
                 # single value
-                total_loss = recon_loss + diversity_loss + l2_loss
+                total_loss = recon_loss + diversity_loss
 
             # Get gradients and update weights
             gradients = tape.gradient(total_loss, self.trainable_variables)
             gradients, _ = tf.clip_by_global_norm(gradients, 2.0)
             optimizer.apply_gradients(zip(gradients, self.trainable_variables))
 
-            return total_loss, recon_loss, diversity_loss, l2_loss, singular_values
+            return total_loss, recon_loss, diversity_loss
 
 
         
@@ -86,10 +84,12 @@ class SceneContentApproximator(Model):
             tf.print("Epoch: ", i)
 
             for image_batch in dataset:
-                total_loss, recon_loss, diversity_loss, l2_loss, singular_values = train_step(image_batch)
+                total_loss, recon_loss, diversity_loss = train_step(image_batch)
 
                 weights = self.conv.kernel
                 weights = tf.reshape(weights, -1).numpy()
+
+                singular_values = tf.linalg.svd(tf.reshape(weights, [self.kernel_height * self.kernel_width, self.num_kernels]), compute_uv=False)
                 singular_values = tf.reshape(singular_values, -1).numpy()
 
                 for j in range(len(kernel_history)):
@@ -100,7 +100,6 @@ class SceneContentApproximator(Model):
                 
                 history['recon_loss'].append(recon_loss)
                 history['kernel_diversity_loss'].append(diversity_loss)
-                history['l2_loss'].append(l2_loss)
                 history['total_loss'].append(total_loss)
 
 
@@ -116,7 +115,6 @@ class SceneContentApproximator(Model):
             'learning_rate': self.learning_rate,
             'loss_constant_alpha': self.loss_constant_alpha,
             'loss_constant_lambda': self.loss_constant_lambda,
-            # ...add any other args...
         })
         return config
     
@@ -143,15 +141,11 @@ class KernelConstraint(keras.constraints.Constraint):
         eps = 1e-3                               
         # sum_per_kernel has shape (1, 1, 1, K)
         sign  = tf.where(sum_per_kernel >= 0, 1.0, -1.0)
-        mag   = tf.maximum(tf.abs(sum_per_kernel), eps)   # at least eps
+        mag   = tf.maximum(tf.abs(sum_per_kernel), eps) 
 
 
-        safe_denominator = sign * mag                    # keeps the sign
-
+        safe_denominator = sign * mag                   
         w = w / safe_denominator  
-        
-                    # normalise
-
 
         return w
 
@@ -169,11 +163,9 @@ class KernelDiversityLoss(keras.regularizers.Regularizer):
     def __call__(self, kernel_tensor):
             # shape: (kernel_height, kernel_width, num_kernels)
 
-            # shape (num_kernels, kernel_height * kernel_width)
+            # shape (kernel_height * kernel_width, num_kernels)
             flattened_kernels = tf.reshape(kernel_tensor, [self.kernel_height * self.kernel_width, self.num_kernels])
 
             singular_values = tf.linalg.svd(flattened_kernels, compute_uv=False)
 
-            l2_loss = tf.constant(0, dtype=tf.float32)
-
-            return - self.loss_constant_lambda * tf.reduce_sum(math.log(singular_values + self.loss_constant_alpha)),l2_loss, singular_values
+            return - self.loss_constant_lambda * tf.reduce_sum(math.log(singular_values + self.loss_constant_alpha))
