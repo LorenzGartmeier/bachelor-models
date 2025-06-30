@@ -4,7 +4,7 @@ import os
 project_root = os.environ.get('BACHELOR_MODELS_ROOT', '.')
 sys.path.append(project_root)
 
-from dataloading.loadCropped import getDatasetFromDirectory
+from dataloading.loadOriginalSize import getDatasetFromDirectory
 from baseline_model.source.SceneContentApproximator import SceneContentApproximator
 import tensorflow as tf
 import pandas as pd
@@ -22,19 +22,22 @@ if gpus:
     except RuntimeError as e:
         print(e)
 
-coco = getDatasetFromDirectory('datasets/coco2017', 64).take(512)
+coco = getDatasetFromDirectory('datasets/coco2017', 1).take(100000)
+imagenet = getDatasetFromDirectory('datasets/imagenet/train', 1).take(200000)
+
+dataset = coco.concatenate(imagenet)
 
 
 
 
 num_kernels = 8
 kernel_height, kernel_width = 11, 11
-learning_rate = 0.0001
+learning_rate = 0.01
 loss_constant_alpha = 0.01
 loss_constant_lambda = 1.0
 
 sceneContentApproximator = SceneContentApproximator(num_kernels, kernel_height, kernel_width, learning_rate, loss_constant_alpha, loss_constant_lambda)
-history, kernel_history, singular_values_history = sceneContentApproximator.train(coco, 1)
+history, kernel_history, singular_values_history = sceneContentApproximator.train(dataset, 10)
 
 sceneContentApproximator.save("baseline_model/saved_weights/scene_content_approximator.keras")
 
@@ -69,7 +72,7 @@ for kernel in kernel_history:
     plt.plot(kernel, linewidth=0.5)
 
 plt.title("kernel values", fontsize=14)
-plt.xlabel("batch", fontsize=12)
+plt.xlabel("epoch", fontsize=12)
 plt.ylabel("kernel values", fontsize=12)
 plt.legend(fontsize=10)
 plt.grid(alpha=0.3)
@@ -87,7 +90,7 @@ for singular_value in singular_values_history:
     plt.plot(singular_value, linewidth=0.5)
 
 plt.title("singular values", fontsize=14)
-plt.xlabel("batch", fontsize=12)
+plt.xlabel("epoch", fontsize=12)
 plt.ylabel("singular values", fontsize=12)
 plt.legend(fontsize=10)
 plt.grid(alpha=0.3)
