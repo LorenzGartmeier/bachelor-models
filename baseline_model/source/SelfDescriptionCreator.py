@@ -69,7 +69,7 @@ class SelfDescriptionCreator(Model):
     
     def reset_conv_weights(self):
         for v in self.depthwise_conv.weights:
-            v.assign(tf.random.normal(v.shape, stddev=0.05))
+            v.assign(tf.random.normal(v.shape, mean = 1 / (self.kernel_height * self.kernel_width), stddev=0.05))
 
 
 
