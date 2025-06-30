@@ -1,6 +1,6 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
-from keras import Model, layers, regularizers
+from keras import Model, layers, regularizers, initializers
 import numpy as np
 tfd = tfp.distributions
 
@@ -51,7 +51,7 @@ class ConstrainedBayesianConv2D(layers.Layer):
         self.posterior_scale = self.add_weight(
             name='posterior_scale',
             shape=[self.non_center_elements, 1, self.num_kernels],
-            initializer=tf.initializers.constant(-5.),  # Initialized for softplus(scale) ≈ 0.01
+            initializer=initializers.constant(-5.),  # Initialized for softplus(scale) ≈ 0.01
             trainable=True)
         
         self.kernel_shape = [self.kernel_height, self.kernel_width, 
@@ -66,6 +66,7 @@ class ConstrainedBayesianConv2D(layers.Layer):
         mask = tf.constant(mask)
         self.indices = tf.where(mask)
         
+    @tf.function
     def call(self, inputs, training=None):
         # Get posterior distribution
         posterior = tfd.Normal(loc=self.posterior_loc, 
@@ -84,7 +85,7 @@ class ConstrainedBayesianConv2D(layers.Layer):
             self.indices,
             v
         )
-        
+
         sums = tf.reduce_sum(kernel, axis=[0, 1], keepdims=True)
 
 
@@ -221,6 +222,7 @@ class SceneContentApproximator(Model):
 
         return predictions
 
+@tf.keras.utils.register_keras_serializable()
 class KernelDiversityLoss(regularizers.Regularizer):
 
     def __init__(self, loss_constant_alpha, loss_constant_lambda, num_kernels, kernel_height, kernel_width):
