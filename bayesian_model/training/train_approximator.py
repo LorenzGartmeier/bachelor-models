@@ -9,7 +9,7 @@ import matplotlib
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 
-from dataloading.loadCropped import getDatasetFromDirectory
+from dataloading.loadOriginalSize import getDatasetFromDirectory
 from bayesian_model.source.SceneContentApproximator import SceneContentApproximator
 
 
@@ -19,9 +19,9 @@ for g in gpus:
 
 
 batch_size   = 64
-coco    = getDatasetFromDirectory("datasets/coco2017",         batch_size)
-imagenet= getDatasetFromDirectory("datasets/imagenet/train",    batch_size)
-train_ds= coco.concatenate(imagenet).take(128)               
+coco    = getDatasetFromDirectory("datasets/coco2017", 1).take(100000)
+imagenet= getDatasetFromDirectory("datasets/imagenet", 1).take(200000)
+dataset = coco.concatenate(imagenet)
 
 
 num_kernels           = 8
@@ -40,7 +40,7 @@ model = SceneContentApproximator(
             loss_constant_lambda = loss_constant_lambda)   
 
 
-history = model.train(train_ds, epochs = 10)   
+history = model.train(dataset, epochs = 10)   
 
 model.save("bayesian_model/saved_weights/scene_content_approximator.keras")
 
