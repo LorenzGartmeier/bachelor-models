@@ -54,6 +54,18 @@ class ConstrainedBayesianConv2D(layers.Layer):
             initializer=tf.initializers.constant(-5.),  # Initialized for softplus(scale) ≈ 0.01
             trainable=True)
         
+        self.kernel_shape = [self.kernel_height, self.kernel_width, 
+                1, self.num_kernels]
+
+        mask = np.ones(self.kernel_shape,
+                       dtype=np.float32)
+        center_h = self.kernel_height // 2
+        center_w = self.kernel_width  // 2
+        mask[center_h, center_w, :, :] = 0.0
+
+        mask = tf.constant(mask)
+        self.indices = tf.where(mask)
+        
     def call(self, inputs, training=None):
         # Get posterior distribution
         posterior = tfd.Normal(loc=self.posterior_loc, 
@@ -61,35 +73,21 @@ class ConstrainedBayesianConv2D(layers.Layer):
         
 
         v = posterior.sample()
-
-
-        # Reconstruct full kernels
-        kernel_shape = [self.kernel_height, self.kernel_width, 
-                        1, self.num_kernels]
         
         # Start with all zeros (including center)
-        kernel = tf.zeros(kernel_shape, dtype=v.dtype)
-        
-        # Create indices for non-center positions
-        center_i, center_j = self.kernel_height//2, self.kernel_width//2
-        indices = []
-        for i in range(self.kernel_height):
-            for j in range(self.kernel_width):
-                if (i, j) != (center_i, center_j):
-                    indices.append([i, j])
-        indices = tf.constant(indices)
+        kernel = tf.zeros(self.kernel_shape, dtype=v.dtype)
+
         
         # Scatter non-center values
         kernel = tf.tensor_scatter_nd_update(
             kernel,
-            indices,
+            self.indices,
             v
         )
         
-        
-        # Normalize each kernel to sum to 1
         sums = tf.reduce_sum(kernel, axis=[0, 1], keepdims=True)
-        # small constatnt to avoid division by zero
+
+
         kernel_normalized = kernel / (sums + 1e-7)
         
         # Add regularization loss if in training mode
@@ -103,7 +101,6 @@ class ConstrainedBayesianConv2D(layers.Layer):
             self.add_loss(kl_loss)
         
 
-        # Perform convolution
         return tf.nn.conv2d(
             inputs,
             kernel_normalized,
@@ -206,10 +203,10 @@ class SceneContentApproximator(Model):
                 epoch_kl_loss += kl_loss
                 epoch_total_loss += total_loss
 
-            history['recon_loss'].append(epoch_recon_loss)
-            history['kernel_diversity_loss'].append(epoch_kernel_diversity_loss)
-            history['kl_loss'].append(epoch_kl_loss)
-            history['total_loss'].append(epoch_total_loss)
+            history['recon_loss'].append(epoch_recon_loss / kl_factor)
+            history['kernel_diversity_loss'].append(epoch_kernel_diversity_loss / kl_factor)
+            history['kl_loss'].append(epoch_kl_loss / kl_factor)
+            history['total_loss'].append(epoch_total_loss / kl_factor)
 
         return history
 
