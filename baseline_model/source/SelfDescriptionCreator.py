@@ -64,20 +64,16 @@ class SelfDescriptionCreator(Model):
             
 
 
-    # expects batches from the SceneContentApproximator of shape (batch_size, image_height, image_width, num_kernels)
+    # expects batches from the SceneContentApproximator of shape (1, image_height, image_width, num_kernels)
     # returns a tensor of shape (batch_size, num_weights) and a tensor of shape (batch_size,1) for the losses
-    def train_and_get(self, residual_batch, epochs):
+    def train_and_get(self, residual, epochs):
 
-        selfdescriptions_list = []
         
-        for i in range(residual_batch.shape[0]):
-            self.reset_conv_weights()
-            self.train(residual_batch[i:i+1], epochs)
-            weights = self.depthwise_conv.kernel
-            flattened_weights = tf.reshape(weights, [-1])
-            selfdescriptions_list.append(flattened_weights)
-
-        return tf.stack(selfdescriptions_list, axis=0)
+        self.reset_conv_weights()
+        self.train(residual, epochs)
+        weights = self.depthwise_conv.kernel
+        flattened_weights = tf.reshape(weights, [-1])
+        return flattened_weights
     
     def reset_conv_weights(self):
         for v in self.depthwise_conv.weights:
