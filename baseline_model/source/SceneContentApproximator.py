@@ -44,6 +44,7 @@ class SceneContentApproximator(Model):
             'total_loss': []
         }
 
+        num_batches = tf.data.experimental.cardinality(dataset).numpy()
         kernel_history = []
         singular_values_history = []
         for _ in range(self.kernel_height * self.kernel_width * self.num_kernels):
@@ -86,13 +87,13 @@ class SceneContentApproximator(Model):
             epoch_total_loss = 0
             epoch_recon_loss = 0
             epoch_diversity_loss = 0
-
             for image_batch in dataset:
                 total_loss, recon_loss, diversity_loss = train_step(image_batch)
 
                 epoch_total_loss += total_loss
                 epoch_recon_loss += recon_loss
                 epoch_diversity_loss += diversity_loss
+                i += 1
 
             weights = self.conv.kernel
             weights = tf.reshape(weights, -1).numpy()
@@ -105,6 +106,10 @@ class SceneContentApproximator(Model):
 
             for j in range(len(singular_values_history)):
                 singular_values_history[j].append(singular_values[j])
+
+            history['recon_loss'].append(epoch_recon_loss / num_batches)
+            history['kernel_diversity_loss'].append(epoch_diversity_loss / num_batches)
+            history['total_loss'].append(epoch_total_loss / num_batches)    
 
 
 
