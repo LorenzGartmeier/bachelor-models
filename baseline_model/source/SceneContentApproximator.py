@@ -29,9 +29,41 @@ class SceneContentApproximator(Model):
                                     kernel_constraint = KernelConstraint((kernel_height, kernel_width, 1, num_kernels)), # num_colorchannels = 1 for grayscaled images
                                     padding='same' # to let the output of the layer have the same size as the input
                                     )
-        
+
+        self.optimizer = keras.optimizers.AdamW(self.learning_rate)
+
     def call(self, input):
         return self.conv(input)
+    
+
+
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=(1, None, None, 1), dtype=tf.float32)]
+    )
+    def train_step(self,image_batch):
+            with tf.GradientTape() as tape:
+
+                prediction = self(image_batch, training=True)
+
+                recon_loss = self.custom_loss(image_batch, prediction)
+                diversity_loss = self.losses[0]
+
+                # single value
+                total_loss = recon_loss + diversity_loss
+
+            # Get gradients and update weights
+            gradients = tape.gradient(total_loss, self.trainable_variables)
+            gradients, _ = tf.clip_by_global_norm(gradients, 2.0)
+            self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+
+            return total_loss, recon_loss, diversity_loss
+
+    def custom_loss(self, y_true, y_pred):
+        # y_true.shape (batch_size, resize_height, resize_width, num_colorchannels)
+        # y_true.shape (batch_size, resize_height, resize_width, num_kernels)
+
+        # y_true gets broadcasted (num_colorchannels = 1 required)
+        return tf.reduce_sum(tf.square(y_true - y_pred))
     
     # expects grayscaled images (num_colorchannels = 1)
     def train(self, dataset, epochs):
@@ -53,33 +85,6 @@ class SceneContentApproximator(Model):
         for _ in range(np.minimum(self.kernel_height * self.kernel_width, self.num_kernels)):
             singular_values_history.append([])
 
-        def custom_loss(y_true, y_pred):
-            # y_true.shape (batch_size, resize_height, resize_width, num_colorchannels)
-            # y_true.shape (batch_size, resize_height, resize_width, num_kernels)
-
-            # y_true gets broadcasted (num_colorchannels = 1 required)
-            return tf.reduce_sum(tf.square(y_true - y_pred))
-                                                
-        optimizer = keras.optimizers.AdamW(self.learning_rate) 
-
-        def train_step(image_batch):
-            with tf.GradientTape() as tape:
-
-                prediction = self(image_batch, training=True)
-
-                recon_loss = custom_loss(image_batch, prediction)
-                diversity_loss = self.losses[0]
-                # single value
-                total_loss = recon_loss + diversity_loss
-
-            # Get gradients and update weights
-            gradients = tape.gradient(total_loss, self.trainable_variables)
-            gradients, _ = tf.clip_by_global_norm(gradients, 2.0)
-            optimizer.apply_gradients(zip(gradients, self.trainable_variables))
-
-            return total_loss, recon_loss, diversity_loss
-
-
         
         for i in range (epochs):
             tf.print("Epoch: ", i)
@@ -87,8 +92,12 @@ class SceneContentApproximator(Model):
             epoch_total_loss = 0
             epoch_recon_loss = 0
             epoch_diversity_loss = 0
+            i = 0
             for image_batch in dataset:
-                total_loss, recon_loss, diversity_loss = train_step(image_batch)
+
+                if i % 100 == 0:
+                    tf.print("Batch: ", i)
+                total_loss, recon_loss, diversity_loss = self.train_step(image_batch)
 
                 epoch_total_loss += total_loss
                 epoch_recon_loss += recon_loss
