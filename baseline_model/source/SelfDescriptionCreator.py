@@ -13,6 +13,9 @@ class SelfDescriptionCreator(Model):
         self.num_kernels = num_kernels
         self.learning_rate = learning_rate
 
+        self.kernel_height = kernel_height
+        self.kernel_width = kernel_width
+
         self.optimizer = keras.optimizers.AdamW(learning_rate, weight_decay=0.003)
 
         self.kernel_constraint = KernelConstraint((kernel_height, kernel_width, num_kernels, 1)) 
@@ -39,37 +42,46 @@ class SelfDescriptionCreator(Model):
         g = tape.gradient(loss, self.trainable_variables)
         g, _ = tf.clip_by_global_norm(g, 10.0)
         self.optimizer.apply_gradients(zip(g, self.trainable_variables))
+
         return loss
     
     # expects a batch with shape (1, image_height, image_width, num_kernels)
     def train(self, residual, epochs):
-        loss_history = []
 
+        best_loss = tf.math.inf
+        patience = 20
+        wait = 0
         for _ in tf.range(epochs):
-            loss_history.append(self.train_step(residual))
+            loss = self.train_step(residual)
+            if loss < best_loss:
+                best_loss = loss
+                wait = 0
+            else:
+                wait += 1
+                if wait >= patience:
+                    # Early stopping if the loss does not improve for 'patience' epochs
+                    break
+            
 
-        return loss_history
 
     # expects batches from the SceneContentApproximator of shape (batch_size, image_height, image_width, num_kernels)
     # returns a tensor of shape (batch_size, num_weights) and a tensor of shape (batch_size,1) for the losses
     def train_and_get(self, residual_batch, epochs):
 
         selfdescriptions_list = []
-        loss_list = []
         
-        for i in tf.range(tf.shape(residual_batch)[0]):
+        for i in range(residual_batch.shape[0]):
             self.reset_conv_weights()
-            loss = self.train(residual_batch[i:i+1], epochs)
-            weights = self.get_weights()[0]
+            self.train(residual_batch[i:i+1], epochs)
+            weights = self.depthwise_conv.kernel
             flattened_weights = tf.reshape(weights, [-1])
             selfdescriptions_list.append(flattened_weights)
-            loss_list.append(loss)
 
-        return tf.stack(selfdescriptions_list, axis=0), loss_list
+        return tf.stack(selfdescriptions_list, axis=0)
     
     def reset_conv_weights(self):
         for v in self.depthwise_conv.weights:
-            v.assign(tf.random.normal(v.shape, mean = 1 / (self.kernel_height * self.kernel_width), stddev=0.05))
+            v.assign(tf.random.normal(v.shape, mean = 1 / (self.kernel_height * self.kernel_width), stddev=0.01))
 
 
 
