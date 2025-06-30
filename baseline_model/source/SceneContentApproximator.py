@@ -83,24 +83,28 @@ class SceneContentApproximator(Model):
         for i in range (epochs):
             tf.print("Epoch: ", i)
 
+            epoch_total_loss = 0
+            epoch_recon_loss = 0
+            epoch_diversity_loss = 0
+
             for image_batch in dataset:
                 total_loss, recon_loss, diversity_loss = train_step(image_batch)
 
-                weights = self.conv.kernel
-                weights = tf.reshape(weights, -1).numpy()
+                epoch_total_loss += total_loss
+                epoch_recon_loss += recon_loss
+                epoch_diversity_loss += diversity_loss
 
-                singular_values = tf.linalg.svd(tf.reshape(weights, [self.kernel_height * self.kernel_width, self.num_kernels]), compute_uv=False)
-                singular_values = tf.reshape(singular_values, -1).numpy()
+            weights = self.conv.kernel
+            weights = tf.reshape(weights, -1).numpy()
 
-                for j in range(len(kernel_history)):
+            singular_values = tf.linalg.svd(tf.reshape(weights, [self.kernel_height * self.kernel_width, self.num_kernels]), compute_uv=False)
+            singular_values = tf.reshape(singular_values, -1).numpy()
+
+            for j in range(len(kernel_history)):
                     kernel_history[j].append(weights[j])
 
-                for j in range(len(singular_values_history)):
-                    singular_values_history[j].append(singular_values[j])
-                
-                history['recon_loss'].append(recon_loss)
-                history['kernel_diversity_loss'].append(diversity_loss)
-                history['total_loss'].append(total_loss)
+            for j in range(len(singular_values_history)):
+                singular_values_history[j].append(singular_values[j])
 
 
 
