@@ -15,9 +15,6 @@ class BayesianDepthwiseConv2D(layers.Layer):
         
     def build(self):
         
-
-
-        
         # Number of non-center elements per kernel
         self.non_center_elements = self.kernel_height * self.kernel_width - 1
         self.kernel_shape = [self.kernel_height, self.kernel_width, 
@@ -46,7 +43,7 @@ class BayesianDepthwiseConv2D(layers.Layer):
         self.indices = tf.where(mask)
 
 
-    def call(self, inputs):
+    def call(self, residual):
         # Get posterior distribution
         posterior = tfd.Normal(loc=self.posterior_loc, 
                                scale=tf.nn.softplus(self.posterior_scale))
@@ -76,7 +73,7 @@ class BayesianDepthwiseConv2D(layers.Layer):
         
         # Perform depthwise convolution
         return tf.nn.depthwise_conv2d(
-            input=inputs,
+            input=residual,
             filter=kernel_normalized,
             strides=(1, 1, 1, 1),
             padding="SAME"
@@ -98,19 +95,18 @@ class SelfDescriptionCreator(Model):
         self.optimizer = keras.optimizers.AdamW(self.learning_rate)
 
 
-    def call(self, inputs):
+    def call(self, residual):
         # Input shape: (1, image_height, image_width, num_kernels)
-        batch_size, image_height, image_width, num_kernels = tf.unstack(tf.shape(inputs))
-        total_error = tf.zeros((batch_size, image_height, image_width), dtype=inputs.dtype)
+        batch_size, image_height, image_width, num_kernels = tf.unstack(tf.shape(residual))
+        total_error = tf.zeros((batch_size, image_height, image_width), dtype=residual.dtype)
 
         # Process each scale
         for l in range(1, self.L + 1):
             factor = 2 ** (l - 1)
             target_size = (image_height // factor, image_width // factor)
             
-            # Bilinear downsampling
             downsampled = tf.image.resize(
-                inputs,
+                residual,
                 target_size,
                 method='bilinear',
                 antialias=False
@@ -118,7 +114,6 @@ class SelfDescriptionCreator(Model):
             
             r_hat = self.depthwise_conv(downsampled)
             
-            # 3. Compute and upsample error
             error = downsampled - r_hat
             upsampled_error = tf.image.resize(
                 error, 
@@ -126,14 +121,12 @@ class SelfDescriptionCreator(Model):
                 method='bilinear'
             )
             
-            # 4. Accumulate errors across residuals
             total_error += tf.reduce_sum(upsampled_error, axis=-1)
 
-        # 5. Compute final loss (mean squared error)
         loss = tf.reduce_mean(tf.reduce_mean(tf.square(total_error), axis=[1, 2]))
         self.add_loss(loss)
         
-        return inputs  # Maintain Keras functional API
+        return residual 
 
     
 
