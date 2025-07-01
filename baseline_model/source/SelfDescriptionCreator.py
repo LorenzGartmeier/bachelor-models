@@ -49,19 +49,27 @@ class SelfDescriptionCreator(Model):
     def train(self, residual, epochs):
 
         best_loss = tf.math.inf
-        patience = 20
-        wait = 0
+        decay_patience = 150
+        decay_wait = 0
+        stop_patience = 300
+        stop_wait = 0
+
+        self.optimizer.learning_rate.assign(self.learning_rate)
         for _ in tf.range(epochs):
             loss = self.train_step(residual)
             if loss < best_loss:
                 best_loss = loss
-                wait = 0
-            else:
-                wait += 1
-                if wait >= patience:
-                    # Early stopping if the loss does not improve for 'patience' epochs
-                    break
+                decay_wait = 0
+                stop_wait = 0
             
+            else:
+                decay_wait += 1
+                stop_wait += 1
+                if decay_wait >= decay_patience:
+                    self.optimizer.learning_rate.assign(self.optimizer.learning_rate * 0.5)
+                    decay_wait = 0
+                if stop_wait >= stop_patience:
+                    break
 
 
     # expects batches from the SceneContentApproximator of shape (1, image_height, image_width, num_kernels)
