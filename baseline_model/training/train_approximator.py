@@ -1,6 +1,6 @@
 import sys
 import os
-
+os.environ['TF_CUDNN_WORKSPACE_LIMIT_IN_MB'] = '16384'
 project_root = os.environ.get('BACHELOR_MODELS_ROOT', '.')
 sys.path.append(project_root)
 
@@ -23,7 +23,7 @@ if gpus:
         print(e)
 
 coco = getDatasetFromDirectory('datasets/coco2017', 1).take(100000)
-imagenet = getDatasetFromDirectory('datasets/imagenet/train', 1).take(200000)
+imagenet = getDatasetFromDirectory('datasets/imagenet', 1).take(200000)
 
 dataset = coco.concatenate(imagenet)
 
