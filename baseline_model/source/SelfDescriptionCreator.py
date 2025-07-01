@@ -20,7 +20,7 @@ class SelfDescriptionCreator(Model):
 
         self.kernel_constraint = KernelConstraint((kernel_height, kernel_width, num_kernels, 1)) 
         # Depthwise convolution (one 11x11 filter per residual channel)
-        self.depthwise_conv = tf.keras.layers.DepthwiseConv2D(
+        self.depthwise_conv = keras.layers.DepthwiseConv2D(
             kernel_size=(kernel_height,  kernel_width),
             depth_multiplier=1,
             padding='same',
@@ -46,15 +46,15 @@ class SelfDescriptionCreator(Model):
         return loss
     
     # expects a batch with shape (1, image_height, image_width, num_kernels)
+    @tf.function(jit_compile=True)
     def train(self, residual, epochs):
 
-        best_loss = tf.math.inf
+        best_loss = tf.constant(tf.float32.max, dtype=tf.float32)
         decay_patience = 150
         decay_wait = 0
         stop_patience = 300
         stop_wait = 0
 
-        self.optimizer.learning_rate.assign(self.learning_rate)
         for _ in tf.range(epochs):
             loss = self.train_step(residual)
             if loss < best_loss:
@@ -74,18 +74,30 @@ class SelfDescriptionCreator(Model):
 
     # expects batches from the SceneContentApproximator of shape (1, image_height, image_width, num_kernels)
     # returns a tensor of shape (batch_size, num_weights) and a tensor of shape (batch_size,1) for the losses
+    @tf.function(jit_compile=True)
     def train_and_get(self, residual, epochs):
 
         
         self.reset_conv_weights()
+
+        for var in self.optimizer.variables():
+            var.assign(tf.zeros_like(var))
+
+        self.optimizer.learning_rate.assign(self.learning_rate)
         self.train(residual, epochs)
         weights = self.depthwise_conv.kernel
         flattened_weights = tf.reshape(weights, [-1])
         return flattened_weights
     
+
+
+    @tf.function(jit_compile=True)
     def reset_conv_weights(self):
-        for v in self.depthwise_conv.weights:
-            v.assign(tf.random.normal(v.shape, mean = 1 / (self.kernel_height * self.kernel_width), stddev=0.01))
+        shape = tf.shape(self.depthwise_conv.kernel)
+        init = tf.random.normal(shape,
+                                mean=1.0/(self.kernel_height*self.kernel_width),
+                                stddev=0.01)
+        self.depthwise_conv.kernel.assign(init)
 
 
 
