@@ -95,7 +95,7 @@ class SceneContentApproximator(Model):
             i = 0
             for image_batch in dataset:
 
-                if i % 100 == 0:
+                if i % 1000 == 0:
                     tf.print("Batch: ", i)
                 total_loss, recon_loss, diversity_loss = self.train_step(image_batch)
 
