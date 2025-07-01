@@ -44,7 +44,7 @@ sceneContentApproximator.save("baseline_model/saved_weights/scene_content_approx
 
 # Save training history
 history_df = pd.DataFrame(history)
-history_df.to_csv("baseline_model/training/results/attributor_training_history.csv", index=False)
+history_df.to_csv("baseline_model/training/results/approximator_training_history.csv", index=False)
     
 # Generate and save loss plot
 plt.figure(figsize=(12, 6))
@@ -57,14 +57,14 @@ plt.ylabel("Loss", fontsize=12)
 plt.legend(fontsize=10)
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig("baseline_model/training/results/attributor_training_losses.png", dpi=300)
+plt.savefig("baseline_model/training/results/approximator_training_losses.png", dpi=300)
 plt.close()
 
 
 
 # Save training history
 kernel_history_df = pd.DataFrame(kernel_history)
-kernel_history_df.to_csv("baseline_model/training/results/attributor_kernel_history.csv", index=False)
+kernel_history_df.to_csv("baseline_model/training/results/approximator_kernel_history.csv", index=False)
 
     
 plt.figure(figsize=(12, 6))
@@ -82,7 +82,7 @@ plt.close()
 
 # Save training history
 singular_values_history_df = pd.DataFrame(singular_values_history)
-singular_values_history_df.to_csv("baseline_model/training/results/attributor_singualar_values_history.csv", index=False)
+singular_values_history_df.to_csv("baseline_model/training/results/approximator_singular_values_history.csv", index=False)
 
     
 plt.figure(figsize=(12, 6))
@@ -95,7 +95,7 @@ plt.ylabel("singular values", fontsize=12)
 plt.legend(fontsize=10)
 plt.grid(alpha=0.3)
 plt.tight_layout()
-plt.savefig("baseline_model/training/results/attributor_singular_values.png", dpi=300)
+plt.savefig("baseline_model/training/results/approximator_singular_values.png", dpi=300)
 plt.close()
 
 print("Training complete and model saved.")
