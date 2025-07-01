@@ -12,8 +12,6 @@ from dataloading.loadOriginalSize import getDatasetFromDirectory
 import numpy as np
 import time
 import keras
-import pandas as pd
-from matplotlib import pyplot as plt
 
 
 batch_size = 1
@@ -29,19 +27,18 @@ selfDescriptionCreator = SelfDescriptionCreator(11, 11, num_kernels, learning_ra
 
 label_list = []
 
-folder_list = ["ProGAN"]
-for folder in folder_list:
+exclusion_list = ["coco2017", "imagenet"]
+for folder in os.listdir('datasets'):
 
-    if os.path.isdir(os.path.join('datasets', folder)):
+    if os.path.isdir(os.path.join('datasets', folder)) and folder not in exclusion_list:
 
     
         print(folder)
         dataset = getDatasetFromDirectory(
             os.path.join('datasets', folder), 
             batch_size=batch_size, 
-        )
+        ).take(10000)
 
-        tf.concat
         os.makedirs(os.path.join('baseline_model/self_descriptions', folder), exist_ok=True)
         os.makedirs(os.path.join('baseline_model/self_descriptions', folder, 'train'), exist_ok=True)
         os.makedirs(os.path.join('baseline_model/self_descriptions', folder, 'test'), exist_ok=True)
