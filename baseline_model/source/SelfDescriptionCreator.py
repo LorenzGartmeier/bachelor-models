@@ -49,27 +49,35 @@ class SelfDescriptionCreator(Model):
     @tf.function(jit_compile=True)
     def train(self, residual, epochs):
 
-        best_loss = tf.constant(tf.float32.max, dtype=tf.float32)
-        decay_patience = 150
-        decay_wait = 0
-        stop_patience = 300
-        stop_wait = 0
+        best_loss = tf.constant(np.float32.max)
+        decay_wait = tf.constant(0)
+        stop_wait = tf.constant(0)
+        decay_patience = tf.constant(150)
+        stop_patience  = tf.constant(300)
 
-        for _ in tf.range(epochs):
+        def cond(epoch, best_loss, decay_wait, stop_wait):
+            return tf.logical_and(epoch < epochs,
+                                  stop_wait < stop_patience)
+
+        def body(epoch, best_loss, decay_wait, stop_wait):
             loss = self.train_step(residual)
-            if loss < best_loss:
-                best_loss = loss
-                decay_wait = 0
-                stop_wait = 0
-            
-            else:
-                decay_wait += 1
-                stop_wait += 1
-                if decay_wait >= decay_patience:
-                    self.optimizer.learning_rate.assign(self.optimizer.learning_rate * 0.5)
-                    decay_wait = 0
-                if stop_wait >= stop_patience:
-                    break
+            improved = loss < best_loss
+
+            best_loss   = tf.where(improved, loss, best_loss)
+            decay_wait  = tf.where(improved, 0, decay_wait + 1)
+            stop_wait   = tf.where(improved, 0, stop_wait  + 1)
+
+            def do_decay():
+                self.optimizer.learning_rate.assign(self.optimizer.learning_rate * 0.5)
+                return tf.constant(0)
+            decay_wait = tf.cond(decay_wait >= decay_patience,
+                                 do_decay,
+                                 lambda: decay_wait)
+
+            return epoch + 1, best_loss, decay_wait, stop_wait
+
+        tf.while_loop(cond, body,
+                      loop_vars=[0, best_loss, decay_wait, stop_wait])
 
 
     # expects batches from the SceneContentApproximator of shape (1, image_height, image_width, num_kernels)
