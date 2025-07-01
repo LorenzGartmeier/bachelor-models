@@ -29,12 +29,10 @@ class SelfDescriptionCreator(Model):
             depthwise_constraint=self.kernel_constraint,
         )
 
-    @tf.function(jit_compile=True)
     def _forward(self, residual):
         e = residual - self.depthwise_conv(residual)
         return tf.reduce_sum(e, axis=-1)
 
-    @tf.function(jit_compile=True)
     def train_step(self, x):
         with tf.GradientTape() as tape:
             err  = self._forward(x)
@@ -46,7 +44,6 @@ class SelfDescriptionCreator(Model):
         return loss
     
     # expects a batch with shape (1, image_height, image_width, num_kernels)
-    @tf.function(jit_compile=True)
     def train(self, residual, epochs):
 
         best_loss = tf.constant(np.float32.max)
@@ -82,7 +79,13 @@ class SelfDescriptionCreator(Model):
 
     # expects batches from the SceneContentApproximator of shape (1, image_height, image_width, num_kernels)
     # returns a tensor of shape (batch_size, num_weights) and a tensor of shape (batch_size,1) for the losses
-    @tf.function(jit_compile=True)
+    @tf.function(
+      input_signature=[
+        tf.TensorSpec([1, None, None, 8], tf.float32, name="residual"),
+        tf.TensorSpec([], tf.int32, name="epochs")
+      ],
+      jit_compile=True
+    )
     def train_and_get(self, residual, epochs):
 
         
@@ -99,7 +102,6 @@ class SelfDescriptionCreator(Model):
     
 
 
-    @tf.function(jit_compile=True)
     def reset_conv_weights(self):
         shape = tf.shape(self.depthwise_conv.kernel)
         init = tf.random.normal(shape,
