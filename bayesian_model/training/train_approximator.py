@@ -1,6 +1,6 @@
 import sys
 import os
-
+os.environ['TF_CUDNN_WORKSPACE_LIMIT_IN_MB'] = '16384'
 project_root = os.environ.get('BACHELOR_MODELS_ROOT', '.')
 sys.path.append(project_root)
 import tensorflow as tf
@@ -18,7 +18,6 @@ for g in gpus:
     tf.config.experimental.set_memory_growth(g, True)
 
 
-batch_size   = 64
 coco    = getDatasetFromDirectory("datasets/coco2017", 1).take(100000)
 imagenet= getDatasetFromDirectory("datasets/imagenet", 1).take(200000)
 dataset = coco.concatenate(imagenet)
@@ -29,7 +28,7 @@ kernel_height         = 11
 kernel_width          = 11
 learning_rate         = 0.001
 loss_constant_alpha   = 1e-2
-loss_constant_lambda  = 0.5        
+loss_constant_lambda  = 1.0        
 
 model = SceneContentApproximator(
             num_kernels          = num_kernels,
@@ -55,7 +54,7 @@ hist_df.to_csv(csv_path, index=False)
 plt.figure(figsize=(12, 6))
 for k, v in history.items():
     plt.plot(v, label=k, linewidth=2)
-plt.title("Bayesian Scene-Content Approximator – training losses")
+plt.title("Bayesian Scene-Content Approximator training losses")
 plt.xlabel("Epoch");  plt.ylabel("Loss")
 plt.legend();  plt.grid(alpha=.3);  plt.tight_layout()
 
