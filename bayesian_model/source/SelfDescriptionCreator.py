@@ -69,7 +69,8 @@ class BayesianDepthwiseConv2D(layers.Layer):
         kernel_normalized = kernel / (sums + 1e-7)
 
         kl_loss = tf.reduce_sum(tfd.kl_divergence(posterior, self.prior))
-        self.add_loss(kl_loss)
+        kl_factor = tf.cast(tf.size(v), tf.float32)
+        self.add_loss(kl_loss * kl_factor)
         
         # Perform depthwise convolution
         return tf.nn.depthwise_conv2d(
@@ -96,48 +97,21 @@ class SelfDescriptionCreator(Model):
 
 
     def call(self, residual):
-        # Input shape: (1, image_height, image_width, num_kernels)
-        batch_size, image_height, image_width, num_kernels = tf.unstack(tf.shape(residual))
-        total_error = tf.zeros((batch_size, image_height, image_width), dtype=residual.dtype)
-
-        # Process each scale
-        for l in range(1, self.L + 1):
-            factor = 2 ** (l - 1)
-            target_size = (image_height // factor, image_width // factor)
             
-            downsampled = tf.image.resize(
-                residual,
-                target_size,
-                method='bilinear',
-                antialias=False
-            )
-            
-            r_hat = self.depthwise_conv(downsampled)
-            
-            error = downsampled - r_hat
-            upsampled_error = tf.image.resize(
-                error, 
-                (image_height, image_width),
-                method='bilinear'
-            )
-            
-            total_error += tf.reduce_sum(upsampled_error, axis=-1)
-
-        loss = tf.reduce_mean(tf.reduce_mean(tf.square(total_error), axis=[1, 2]))
+        approximation = self.depthwise_conv(residual)
+        loss = tf.reduce_sum(tf.square(tf.reduce_sum(residual - approximation, axis = -1)))
         self.add_loss(loss)
-        
         return residual 
 
     
 
 
-    @tf.function(reduce_retracing=True, jit_compile=True)
+    @tf.function(jit_compile=True)
     def train_step(self, residual_batch):
         with tf.GradientTape() as tape:
             _ = self(residual_batch, training=True)          
             loss = tf.add_n(self.losses)          
         grads = tape.gradient(loss, self.trainable_variables)
-        grads, _ = tf.clip_by_global_norm(grads, 10.0)
         self.optimizer.apply_gradients(zip(grads, self.trainable_variables))
 
 
@@ -146,19 +120,19 @@ class SelfDescriptionCreator(Model):
         for _ in range (epochs):
             self.train_step(image_batch)
 
-    def train_and_get(self, image_batch, epochs):
-        self.reset_conv_weights()
-        residual_list = tf.unstack(image_batch)
-        residual_list = [tf.expand_dims(x, axis=0) for x in residual_list]
-        selfdescriptions_list = []
-        for image in residual_list:
-            self.train(image, epochs)
-            locs = tf.reshape(self.depthwise_conv.posterior_loc, [-1])
-            scales = tf.reshape(tf.nn.softplus(self.depthwise_conv.posterior_scale), [-1])
-            sefldescription = tf.concat([locs, scales], axis=0)
-            selfdescriptions_list.append(sefldescription)
 
-        return tf.stack(selfdescriptions_list)
+    # a expects a residual of shape (1, height, width, num_kernels)
+    def train_and_get(self, residual, epochs):
+        self.reset_conv_weights()
+
+        for var in self.optimizer.variables:
+            var.assign(tf.zeros_like(var))
+        self.train(residual, epochs)
+        posterior = tfd.Normal(loc=self.posterior_loc, 
+                               scale=tf.nn.softplus(self.posterior_scale))
+        v = posterior.sample()
+        return tf.reshape(v, [-1])
+
 
     def reset_conv_weights(self):
         self.depthwise_conv.posterior_loc.assign(tf.random.normal(self.depthwise_conv.posterior_loc.shape))
