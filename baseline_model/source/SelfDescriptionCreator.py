@@ -28,6 +28,7 @@ class SelfDescriptionCreator(Model):
             activation=None,
             depthwise_constraint=self.kernel_constraint,
         )
+        self.depthwise_conv.build(input_shape=(1,None, None, num_kernels))
 
     def _forward(self, residual):
         e = residual - self.depthwise_conv(residual)
@@ -46,11 +47,11 @@ class SelfDescriptionCreator(Model):
     # expects a batch with shape (1, image_height, image_width, num_kernels)
     def train(self, residual, epochs):
 
-        best_loss = tf.constant(np.float32.max)
+        best_loss = tf.constant(tf.float32.max)
         decay_wait = tf.constant(0)
         stop_wait = tf.constant(0)
-        decay_patience = tf.constant(150)
-        stop_patience  = tf.constant(300)
+        decay_patience = tf.constant(100)
+        stop_patience  = tf.constant(200)
 
         def cond(epoch, best_loss, decay_wait, stop_wait):
             return tf.logical_and(epoch < epochs,
@@ -91,7 +92,7 @@ class SelfDescriptionCreator(Model):
         
         self.reset_conv_weights()
 
-        for var in self.optimizer.variables():
+        for var in self.optimizer.variables:
             var.assign(tf.zeros_like(var))
 
         self.optimizer.learning_rate.assign(self.learning_rate)
