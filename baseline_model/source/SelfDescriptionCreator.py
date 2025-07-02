@@ -37,7 +37,7 @@ class SelfDescriptionCreator(Model):
     def train_step(self, x):
         with tf.GradientTape() as tape:
             err  = self._forward(x)
-            loss = tf.reduce_mean(tf.square(err))    
+            loss = tf.reduce_sum(tf.square(err))    
         g = tape.gradient(loss, self.trainable_variables)
         g, _ = tf.clip_by_global_norm(g, 10.0)
         self.optimizer.apply_gradients(zip(g, self.trainable_variables))
