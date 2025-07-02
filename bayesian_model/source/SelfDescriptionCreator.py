@@ -113,12 +113,34 @@ class SelfDescriptionCreator(Model):
             loss = tf.add_n(self.losses)          
         grads = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(grads, self.trainable_variables))
+        return loss
 
 
     # expects a batch with shape (1, image_height, image_width, num_kernels)
-    def train(self, image_batch, epochs):                                  
+    def train(self, image_batch, epochs):   
+        decay_wait = 0
+        decay_patience = 100
+        stop_wait = 0
+        stop_patience = 0
+        best_loss = tf.float32.max
+        self.optimizer.learning_rate.assign(self.learning_rate)                               
         for _ in range (epochs):
-            self.train_step(image_batch)
+            loss = self.train_step(image_batch)
+
+            if(loss < best_loss):
+                best_loss = loss
+                decay_wait = 0
+                stop_wait = 0
+            else: 
+                decay_wait += 1
+                stop_wait += 1
+
+            if(decay_wait >= decay_patience):
+                self.optimizer.learning_rate.assign(self.optimizer.learning_rate * 0.5)
+            
+            if(stop_wait >= stop_patience):
+                break
+
 
 
     # a expects a residual of shape (1, height, width, num_kernels)
