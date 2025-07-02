@@ -42,8 +42,6 @@ class Attributor:
         if not list_of_batches:
             return tf.constant([], dtype=tf.int64), tf.constant([], dtype=tf.float32)
         
-        batch_size = tf.shape(list_of_batches[0])[0]
-        num_classes = len(self.gmm_dict)
         n_samples = len(list_of_batches)
         
         log_likelihoods = []
